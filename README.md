@@ -43,7 +43,11 @@ aicommit | git commit -F -
 
 ## Configuration
 
-The app connects to LM Studio at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. These are hardcoded defaults for the first version.
+The app connects to LM Studio at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Override the model by setting the `AICOMMIT_MODEL` environment variable:
+
+```bash
+AICOMMIT_MODEL=my-model aicommit
+```
 
 ## Project Structure
 
