@@ -6,30 +6,51 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 const (
-	defaultURL   = "http://localhost:1234/api/generate"
+	defaultURL   = "http://localhost:1234/v1/chat/completions"
 	defaultModel = "qwen/qwen3.6-27b"
 )
 
-// request is the payload sent to the LM Studio /api/generate endpoint.
+// request is the payload sent to the OpenAI-compatible chat completions endpoint.
 type request struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+	Model    string    `json:"model"`
+	Messages []message `json:"messages"`
+	Stream   bool      `json:"stream"`
 }
 
-// response is the payload returned by the LM Studio /api/generate endpoint.
+type message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// response is the payload returned by the OpenAI-compatible chat completions endpoint.
 type response struct {
-	Response string `json:"response"`
+	Choices []choice `json:"choices"`
+}
+
+type choice struct {
+	Message message `json:"message"`
+}
+
+// model returns the model name from the AICOMMIT_MODEL environment variable,
+// falling back to the default if not set.
+func model() string {
+	if m := os.Getenv("AICOMMIT_MODEL"); m != "" {
+		return m
+	}
+	return defaultModel
 }
 
 // Generate sends a prompt to the local LM Studio API and returns the generated text.
 func Generate(prompt string) (string, error) {
 	body, err := json.Marshal(request{
-		Model:  defaultModel,
-		Prompt: prompt,
+		Model: model(),
+		Messages: []message{
+			{Role: "user", Content: prompt},
+		},
 		Stream: false,
 	})
 	if err != nil {
@@ -52,5 +73,9 @@ func Generate(prompt string) (string, error) {
 		return "", fmt.Errorf("decoding response: %w", err)
 	}
 
-	return result.Response, nil
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return result.Choices[0].Message.Content, nil
 }
