@@ -35,11 +35,30 @@ git add <files>
 aicommit
 ```
 
-3. The generated commit message is printed to stdout. Use it however you like:
+The generated commit message is printed to stdout. Use it however you like:
 
 ```bash
 aicommit | git commit -F -
 ```
+
+### Interactive commit (`--commit`)
+
+Add `--commit` (or `-c`) to review the generated message and commit interactively:
+
+```bash
+aicommit --commit
+```
+
+You'll see the suggested message and a prompt:
+
+```
+feat: add user authentication
+[a]ccept, [r]etry, [c]ancel:
+```
+
+- **`a` or Enter** — accept and run `git commit -m "<message>"`
+- **`r`** — regenerate a new message from the same diff
+- **`c`** — cancel without committing
 
 ## Configuration
 
