@@ -14,14 +14,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// DiffProvider retrieves the staged git diff.
+// DiffProvider retrieves a git diff.
 type DiffProvider interface {
 	StagedDiff() (string, error)
+	AllDiff() (string, error)
 }
 
 // Committer creates a git commit.
 type Committer interface {
 	Commit(message string) error
+	CommitAll(message string) error
 }
 
 // MessageGenerator sends a prompt to the LLM and returns the response.
@@ -33,21 +35,25 @@ type MessageGenerator interface {
 type realGit struct{}
 
 func (realGit) StagedDiff() (string, error) { return git.StagedDiff() }
+func (realGit) AllDiff() (string, error)    { return git.AllDiff() }
 func (realGit) Commit(msg string) error      { return git.Commit(msg) }
+func (realGit) CommitAll(msg string) error    { return git.CommitAll(msg) }
 
 var commitFlag bool
+var allFlag bool
 
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "aicommit",
 		Short: "Generate Conventional Commit messages using a local LLM",
-		Long:  "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.",
+		Long:  "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(realGit{}, llm.NewClient(), os.Stdin, os.Stdout, os.Stderr)
 		},
 	}
 
 	rootCmd.Flags().BoolVarP(&commitFlag, "commit", "c", false, "prompt to accept/retry and commit the generated message")
+	rootCmd.Flags().BoolVarP(&allFlag, "all", "a", false, "include all changes (staged + unstaged) via git diff HEAD")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -55,13 +61,17 @@ func main() {
 }
 
 func run(dp DiffProvider, mg MessageGenerator, stdin io.Reader, stdout, stderr io.Writer) error {
-	diff, err := dp.StagedDiff()
+	diff, err := diffForMode(dp)
 	if err != nil {
-		return fmt.Errorf("getting staged diff: %w", err)
+		return err
 	}
 
 	if strings.TrimSpace(diff) == "" {
-		fmt.Fprintln(stderr, "No staged changes found. Stage your changes with: git add <files>")
+		if allFlag {
+			fmt.Fprintln(stderr, "No changes found.")
+		} else {
+			fmt.Fprintln(stderr, "No staged changes found. Stage your changes with: git add <files>\nOr use --all to include all changes.")
+		}
 		return errEmptyDiff
 	}
 
@@ -74,12 +84,27 @@ func run(dp DiffProvider, mg MessageGenerator, stdin io.Reader, stdout, stderr i
 		return nil
 	}
 
-	return interactiveCommit(diff, mg, realGit{}, stdin, stdout, stderr)
+	return interactiveCommit(diff, mg, realGit{}, allFlag, stdin, stdout, stderr)
+}
+
+func diffForMode(dp DiffProvider) (string, error) {
+	if allFlag {
+		diff, err := dp.AllDiff()
+		if err != nil {
+			return "", fmt.Errorf("getting diff: %w", err)
+		}
+		return diff, nil
+	}
+	diff, err := dp.StagedDiff()
+	if err != nil {
+		return "", fmt.Errorf("getting staged diff: %w", err)
+	}
+	return diff, nil
 }
 
 var errEmptyDiff = fmt.Errorf("empty diff")
 
-func interactiveCommit(diff string, mg MessageGenerator, c Committer, stdin io.Reader, stdout, stderr io.Writer) error {
+func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, stdin io.Reader, stdout, stderr io.Writer) error {
 	scanner := bufio.NewScanner(stdin)
 
 	for {
@@ -107,8 +132,14 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, stdin io.R
 					fmt.Fprintln(stderr, "Error: generated commit message is empty, retrying.")
 					break confirmLoop
 				}
-				if err := c.Commit(msg); err != nil {
-					return fmt.Errorf("committing: %w", err)
+				if all {
+					if err := c.CommitAll(msg); err != nil {
+						return fmt.Errorf("committing: %w", err)
+					}
+				} else {
+					if err := c.Commit(msg); err != nil {
+						return fmt.Errorf("committing: %w", err)
+					}
 				}
 				return nil
 			case "e":

@@ -14,3 +14,13 @@ func StagedDiff() (string, error) {
 	}
 	return string(out), nil
 }
+
+// AllDiff returns the output of `git diff HEAD`.
+func AllDiff() (string, error) {
+	cmd := exec.Command("git", "diff", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("running git diff HEAD: %w", err)
+	}
+	return string(out), nil
+}
