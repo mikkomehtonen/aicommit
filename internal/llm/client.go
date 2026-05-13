@@ -35,19 +35,36 @@ type choice struct {
 	Message message `json:"message"`
 }
 
-// model returns the model name from the AICOMMIT_MODEL environment variable,
+// Client sends prompts to an OpenAI-compatible chat completions endpoint.
+type Client struct {
+	HTTPClient *http.Client
+	URL        string
+	Model      string
+}
+
+// NewClient returns a Client with defaults. The model is read from the
+// AICOMMIT_MODEL environment variable, falling back to defaultModel.
+func NewClient() *Client {
+	return &Client{
+		HTTPClient: http.DefaultClient,
+		URL:        defaultURL,
+		Model:      envModel(),
+	}
+}
+
+// envModel returns the model name from the AICOMMIT_MODEL environment variable,
 // falling back to the default if not set.
-func model() string {
+func envModel() string {
 	if m := os.Getenv("AICOMMIT_MODEL"); m != "" {
 		return m
 	}
 	return defaultModel
 }
 
-// Generate sends a prompt to the local LM Studio API and returns the generated text.
-func Generate(prompt string) (string, error) {
+// Generate sends a prompt to the LLM API and returns the generated text.
+func (c *Client) Generate(prompt string) (string, error) {
 	body, err := json.Marshal(request{
-		Model: model(),
+		Model: c.Model,
 		Messages: []message{
 			{Role: "user", Content: prompt},
 		},
@@ -57,7 +74,7 @@ func Generate(prompt string) (string, error) {
 		return "", fmt.Errorf("marshaling request: %w", err)
 	}
 
-	resp, err := http.Post(defaultURL, "application/json", bytes.NewReader(body))
+	resp, err := c.HTTPClient.Post(c.URL, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("sending request to LLM: %w", err)
 	}

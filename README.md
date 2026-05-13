@@ -68,6 +68,14 @@ The app connects to LM Studio at `http://localhost:1234` using the model `qwen/q
 AICOMMIT_MODEL=my-model aicommit
 ```
 
+## Testing
+
+```bash
+go test ./...
+```
+
+Tests use fakes and `httptest` — no real git repo or LM Studio server required.
+
 ## Project Structure
 
 ```

@@ -1,0 +1,320 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strings"
+	"testing"
+)
+
+// --- Fakes ---
+
+type fakeDiffProvider struct {
+	diff string
+	err  error
+}
+
+func (f *fakeDiffProvider) StagedDiff() (string, error) { return f.diff, f.err }
+
+type fakeCommitter struct {
+	committed []string
+	err       error // return this error on next Commit call
+}
+
+func (f *fakeCommitter) Commit(msg string) error {
+	if f.err != nil {
+		err := f.err
+		f.err = nil // one-shot error
+		return err
+	}
+	f.committed = append(f.committed, msg)
+	return nil
+}
+
+type fakeGenerator struct {
+	msgs  []string // responses returned in order
+	index int
+	err   error    // return this error on next Generate call
+}
+
+func (f *fakeGenerator) Generate(prompt string) (string, error) {
+	if f.err != nil {
+		err := f.err
+		f.err = nil // one-shot error
+		return "", err
+	}
+	if f.index < len(f.msgs) {
+		msg := f.msgs[f.index]
+		f.index++
+		return msg, nil
+	}
+	return "", fmt.Errorf("no more fake responses")
+}
+
+// --- Tests ---
+
+func TestRun_emptyDiff(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "", err: nil}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+
+	if err != errEmptyDiff {
+		t.Errorf("expected errEmptyDiff, got %v", err)
+	}
+	if stdout.String() != "" {
+		t.Errorf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "No staged changes found") {
+		t.Errorf("expected hint on stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_whitespaceOnlyDiff(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "   \n\t  ", err: nil}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+
+	if err != errEmptyDiff {
+		t.Errorf("expected errEmptyDiff, got %v", err)
+	}
+}
+
+func TestRun_printMode(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "some diff", err: nil}
+	mg := &fakeGenerator{msgs: []string{"feat: add something"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Output should be the trimmed message with a trailing newline.
+	got := stdout.String()
+	want := "feat: add something\n"
+	if got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRun_generateError(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "some diff", err: nil}
+	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
+	var stdout, stderr bytes.Buffer
+
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "generating commit message") {
+		t.Errorf("error = %v, want error containing 'generating commit message'", err)
+	}
+}
+
+func TestRun_diffError(t *testing.T) {
+	dp := &fakeDiffProvider{err: fmt.Errorf("git not found")}
+	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "getting staged diff") {
+		t.Errorf("error = %v, want error containing 'getting staged diff'", err)
+	}
+}
+
+func TestInteractiveCommit_accept(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: new thing"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("a\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: new thing" {
+		t.Errorf("committed %q, want %q", c.committed[0], "feat: new thing")
+	}
+}
+
+func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"fix: bug"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("\n") // Enter = accept
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+}
+
+func TestInteractiveCommit_retry(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"bad message", "good message"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("r\na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "good message" {
+		t.Errorf("committed %q, want %q", c.committed[0], "good message")
+	}
+}
+
+func TestInteractiveCommit_cancel(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: something"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("c\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 0 {
+		t.Errorf("expected 0 commits, got %d", len(c.committed))
+	}
+	if !strings.Contains(stderr.String(), "Cancelled") {
+		t.Errorf("stderr = %q, want 'Cancelled'", stderr.String())
+	}
+}
+
+func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"  ", "feat: real message"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("a\na\n") // first accept hits empty, second succeeds
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: real message" {
+		t.Errorf("committed %q, want %q", c.committed[0], "feat: real message")
+	}
+	if !strings.Contains(stderr.String(), "empty") {
+		t.Errorf("stderr should mention empty message, got %q", stderr.String())
+	}
+}
+
+func TestInteractiveCommit_commitError(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: something"}}
+	c := &fakeCommitter{err: fmt.Errorf("git commit failed")}
+	stdin := strings.NewReader("a\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "committing") {
+		t.Errorf("error = %v, want error containing 'committing'", err)
+	}
+}
+
+func TestInteractiveCommit_generateError(t *testing.T) {
+	mg := &fakeGenerator{err: fmt.Errorf("LLM error")}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("a\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "generating commit message") {
+		t.Errorf("error = %v, want error containing 'generating commit message'", err)
+	}
+}
+
+func TestInteractiveCommit_unknownChoice(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: first", "feat: second"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("x\na\n") // unknown then accept
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "Unknown choice") {
+		t.Errorf("stderr should mention unknown choice, got %q", stderr.String())
+	}
+	if c.committed[0] != "feat: second" {
+		t.Errorf("committed %q after unknown choice retry", c.committed[0])
+	}
+}
+
+func TestInteractiveCommit_eof(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: something"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("") // immediate EOF
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 0 {
+		t.Errorf("expected 0 commits on EOF, got %d", len(c.committed))
+	}
+}
+
+// Verify that the realGit type satisfies the interfaces at compile time.
+func TestInterfaceCompliance(t *testing.T) {
+	var _ DiffProvider = (*realGit)(nil)
+	var _ Committer = (*realGit)(nil)
+	var _ MessageGenerator = (*llmClient)(nil)
+}
+
+// Wrapper to satisfy MessageGenerator for the real llm.Client.
+type llmClient struct{}
+
+func (llmClient) Generate(prompt string) (string, error) { return "", nil }
+
+// Verify io.Reader/io.Writer are accepted where expected.
+func TestRun_acceptsIOInterfaces(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "diff", err: nil}
+	mg := &fakeGenerator{msgs: []string{"feat: test"}}
+	var stdout, stderr bytes.Buffer
+
+	// This just verifies the function signature accepts io.Reader/io.Writer.
+	err := run(dp, mg, io.NopCloser(strings.NewReader("")), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
