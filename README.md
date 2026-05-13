@@ -53,10 +53,11 @@ You'll see the suggested message and a prompt:
 
 ```
 feat: add user authentication
-[a]ccept, [r]etry, [c]ancel:
+[a]ccept, [e]dit, [r]etry, [c]ancel:
 ```
 
 - **`a` or Enter** — accept and run `git commit -m "<message>"`
+- **`e`** — edit the message; type a new message and press Enter, or press Enter with no input to keep the current one
 - **`r`** — regenerate a new message from the same diff
 - **`c`** — cancel without committing
 

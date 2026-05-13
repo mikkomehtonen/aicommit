@@ -89,32 +89,47 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, stdin io.R
 		}
 		msg = strings.TrimSpace(msg)
 
-		fmt.Fprintln(stdout, msg)
-		fmt.Fprint(stdout, "[a]ccept, [r]etry, [c]ancel: ")
+		// Confirmation loop: allows editing without regenerating.
+	confirmLoop:
+		for {
+			fmt.Fprintln(stdout, msg)
+			fmt.Fprint(stdout, "[a]ccept, [e]dit, [r]etry, [c]ancel: ")
 
-		if !scanner.Scan() {
-			fmt.Fprintln(stdout)
-			return nil
-		}
+			if !scanner.Scan() {
+				fmt.Fprintln(stdout)
+				return nil
+			}
 
-		choice := strings.TrimSpace(scanner.Text())
-		switch choice {
-		case "a", "":
-			if msg == "" {
-				fmt.Fprintln(stderr, "Error: generated commit message is empty, retrying.")
+			choice := strings.TrimSpace(scanner.Text())
+			switch choice {
+			case "a", "":
+				if msg == "" {
+					fmt.Fprintln(stderr, "Error: generated commit message is empty, retrying.")
+					break confirmLoop
+				}
+				if err := c.Commit(msg); err != nil {
+					return fmt.Errorf("committing: %w", err)
+				}
+				return nil
+			case "e":
+				fmt.Fprint(stdout, "Edit message: ")
+				if !scanner.Scan() {
+					fmt.Fprintln(stdout)
+					return nil
+				}
+				edited := strings.TrimSpace(scanner.Text())
+				if edited != "" {
+					msg = edited
+				}
 				continue
+			case "r":
+				break confirmLoop
+			case "c":
+				fmt.Fprintln(stderr, "Cancelled.")
+				return nil
+			default:
+				fmt.Fprintf(stderr, "Unknown choice %q, use [a]ccept, [e]dit, [r]etry, or [c]ancel.\n", choice)
 			}
-			if err := c.Commit(msg); err != nil {
-				return fmt.Errorf("committing: %w", err)
-			}
-			return nil
-		case "r":
-			continue
-		case "c":
-			fmt.Fprintln(stderr, "Cancelled.")
-			return nil
-		default:
-			fmt.Fprintf(stderr, "Unknown choice %q, use [a]ccept, [r]etry, or [c]ancel.\n", choice)
 		}
 	}
 }

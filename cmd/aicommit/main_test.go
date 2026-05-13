@@ -260,7 +260,7 @@ func TestInteractiveCommit_generateError(t *testing.T) {
 }
 
 func TestInteractiveCommit_unknownChoice(t *testing.T) {
-	mg := &fakeGenerator{msgs: []string{"feat: first", "feat: second"}}
+	mg := &fakeGenerator{msgs: []string{"feat: first"}}
 	c := &fakeCommitter{}
 	stdin := strings.NewReader("x\na\n") // unknown then accept
 	var stdout, stderr bytes.Buffer
@@ -273,8 +273,8 @@ func TestInteractiveCommit_unknownChoice(t *testing.T) {
 	if !strings.Contains(stderr.String(), "Unknown choice") {
 		t.Errorf("stderr should mention unknown choice, got %q", stderr.String())
 	}
-	if c.committed[0] != "feat: second" {
-		t.Errorf("committed %q after unknown choice retry", c.committed[0])
+	if c.committed[0] != "feat: first" {
+		t.Errorf("committed %q, want %q (unknown choice re-prompts same message)", c.committed[0], "feat: first")
 	}
 }
 
@@ -291,6 +291,130 @@ func TestInteractiveCommit_eof(t *testing.T) {
 	}
 	if len(c.committed) != 0 {
 		t.Errorf("expected 0 commits on EOF, got %d", len(c.committed))
+	}
+}
+
+func TestInteractiveCommit_editThenAccept(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\nfeat: edited message\na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: edited message" {
+		t.Errorf("committed %q, want %q", c.committed[0], "feat: edited message")
+	}
+}
+
+func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\n\na\n") // edit with empty input, then accept
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: original" {
+		t.Errorf("committed %q, want %q (original kept on empty edit)", c.committed[0], "feat: original")
+	}
+}
+
+func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\n   \na\n") // edit with whitespace-only input, then accept
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.committed[0] != "feat: original" {
+		t.Errorf("committed %q, want %q (original kept on whitespace-only edit)", c.committed[0], "feat: original")
+	}
+}
+
+func TestInteractiveCommit_editThenCancel(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\nfeat: edited\nc\n") // edit, then cancel
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 0 {
+		t.Errorf("expected 0 commits, got %d", len(c.committed))
+	}
+	if !strings.Contains(stderr.String(), "Cancelled") {
+		t.Errorf("stderr = %q, want 'Cancelled'", stderr.String())
+	}
+}
+
+func TestInteractiveCommit_editThenRetry(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original", "feat: regenerated"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\nfeat: edited\nr\na\n") // edit, then retry (regenerate), then accept
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: regenerated" {
+		t.Errorf("committed %q, want %q (regenerated after retry)", c.committed[0], "feat: regenerated")
+	}
+}
+
+func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\n  feat: trimmed  \na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.committed[0] != "feat: trimmed" {
+		t.Errorf("committed %q, want %q (trimmed edit)", c.committed[0], "feat: trimmed")
+	}
+}
+
+func TestInteractiveCommit_multipleEdits(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: original"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("e\nfeat: first edit\ne\nfeat: final edit\na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.committed[0] != "feat: final edit" {
+		t.Errorf("committed %q, want %q (last edit wins)", c.committed[0], "feat: final edit")
 	}
 }
 
