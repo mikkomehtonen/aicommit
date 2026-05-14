@@ -4,7 +4,8 @@
 
 ```bash
 go build ./cmd/aicommit   # build binary
-go vet ./...              # static analysis (no test suite yet)
+go vet ./...              # static analysis
+go test ./...             # run tests
 ```
 
 Module name is `aicommit` (no remote path). Single binary, no subcommands.
@@ -31,7 +32,7 @@ Flow: `git diff` → `prompt.Build` → `llm.Generate` → stdout.
 
 ## Conventions
 
-- No tests yet — don't generate them unless asked.
+- Tests use fakes and `httptest` — no real git repo or LM Studio server required.
 - No config files — model override is env-var only.
 - The app prints only the commit message to stdout; errors go to stderr.
 - Empty staged diff prints a hint to stderr and exits 1 (not via Cobra error handling).
