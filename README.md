@@ -75,10 +75,10 @@ feat: add user authentication
 
 ## Configuration
 
-The app connects to LM Studio at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Override the model by setting the `AICOMMIT_MODEL` environment variable:
+The app connects to LM Studio at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Both can be overridden with environment variables:
 
 ```bash
-AICOMMIT_MODEL=my-model aicommit
+AICOMMIT_URL=http://localhost:1234/v1/chat/completions AICOMMIT_MODEL=my-model aicommit
 ```
 
 ## Testing

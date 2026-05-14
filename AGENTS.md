@@ -23,7 +23,8 @@ Flow: `git diff` → `prompt.Build` → `llm.Generate` → stdout.
 ## LLM Client Details
 
 - Uses **OpenAI-compatible** chat completions format (`/v1/chat/completions`), not Ollama's `/api/generate`.
-- Endpoint is hardcoded: `http://localhost:1234/v1/chat/completions`
+- Endpoint default: `http://localhost:1234/v1/chat/completions`
+- URL override: set `AICOMMIT_URL` env var
 - Model override: set `AICOMMIT_MODEL` env var. Default: `qwen/qwen3.6-27b`
 - Response is extracted from `choices[0].message.content`
 - Requires LM Studio running locally with a model loaded

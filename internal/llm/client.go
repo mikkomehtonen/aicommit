@@ -42,14 +42,24 @@ type Client struct {
 	Model      string
 }
 
-// NewClient returns a Client with defaults. The model is read from the
-// AICOMMIT_MODEL environment variable, falling back to defaultModel.
+// NewClient returns a Client with defaults. The URL is read from the
+// AICOMMIT_URL environment variable, falling back to defaultURL. The model
+// is read from the AICOMMIT_MODEL environment variable, falling back to defaultModel.
 func NewClient() *Client {
 	return &Client{
 		HTTPClient: http.DefaultClient,
-		URL:        defaultURL,
+		URL:        envURL(),
 		Model:      envModel(),
 	}
+}
+
+// envURL returns the backend URL from the AICOMMIT_URL environment variable,
+// falling back to the default if not set.
+func envURL() string {
+	if u := os.Getenv("AICOMMIT_URL"); u != "" {
+		return u
+	}
+	return defaultURL
 }
 
 // envModel returns the model name from the AICOMMIT_MODEL environment variable,
