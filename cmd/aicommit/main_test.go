@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"aicommit/internal/prompt"
 )
 
 // --- Fakes ---
@@ -46,12 +48,14 @@ func (f *fakeCommitter) CommitAll(msg string) error {
 }
 
 type fakeGenerator struct {
-	msgs  []string // responses returned in order
-	index int
-	err   error    // return this error on next Generate call
+	msgs    []string // responses returned in order
+	index   int
+	err     error    // return this error on next Generate call
+	prompts []string // captured prompts passed to Generate
 }
 
 func (f *fakeGenerator) Generate(prompt string) (string, error) {
+	f.prompts = append(f.prompts, prompt)
 	if f.err != nil {
 		err := f.err
 		f.err = nil // one-shot error
@@ -567,5 +571,67 @@ func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 	}
 	if len(c.committedAll) != 0 {
 		t.Errorf("expected 0 CommitAll calls, got %d", len(c.committedAll))
+	}
+}
+
+func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: first attempt", "feat: second attempt"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("r\na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mg.prompts) != 2 {
+		t.Fatalf("expected 2 Generate calls, got %d", len(mg.prompts))
+	}
+	// First call should use the normal Build prompt.
+	firstPrompt := prompt.Build("some diff")
+	if mg.prompts[0] != firstPrompt {
+		t.Errorf("first prompt = %q, want %q", mg.prompts[0], firstPrompt)
+	}
+	// Second call should use BuildRetry and include the rejected suggestion.
+	if !strings.Contains(mg.prompts[1], "feat: first attempt") {
+		t.Errorf("retry prompt should contain rejected suggestion, got %q", mg.prompts[1])
+	}
+	if !strings.Contains(mg.prompts[1], "rejected") {
+		t.Errorf("retry prompt should mention 'rejected', got %q", mg.prompts[1])
+	}
+	if !strings.Contains(mg.prompts[1], "different") {
+		t.Errorf("retry prompt should mention 'different', got %q", mg.prompts[1])
+	}
+}
+
+func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: first", "feat: second", "feat: third"}}
+	c := &fakeCommitter{}
+	stdin := strings.NewReader("r\nr\na\n")
+	var stdout, stderr bytes.Buffer
+
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mg.prompts) != 3 {
+		t.Fatalf("expected 3 Generate calls, got %d", len(mg.prompts))
+	}
+	// First call: normal Build.
+	if mg.prompts[0] != prompt.Build("some diff") {
+		t.Errorf("first prompt should be normal Build, got %q", mg.prompts[0])
+	}
+	// Second call: BuildRetry with one rejected suggestion.
+	if !strings.Contains(mg.prompts[1], "feat: first") {
+		t.Errorf("second prompt should contain first suggestion, got %q", mg.prompts[1])
+	}
+	// Third call: BuildRetry with two rejected suggestions.
+	if !strings.Contains(mg.prompts[2], "feat: first") {
+		t.Errorf("third prompt should contain first suggestion, got %q", mg.prompts[2])
+	}
+	if !strings.Contains(mg.prompts[2], "feat: second") {
+		t.Errorf("third prompt should contain second suggestion, got %q", mg.prompts[2])
 	}
 }

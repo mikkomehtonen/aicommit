@@ -106,9 +106,16 @@ var errEmptyDiff = fmt.Errorf("empty diff")
 
 func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, stdin io.Reader, stdout, stderr io.Writer) error {
 	scanner := bufio.NewScanner(stdin)
+	var previousSuggestions []string
 
 	for {
-		msg, err := mg.Generate(prompt.Build(diff))
+		var promptText string
+		if len(previousSuggestions) == 0 {
+			promptText = prompt.Build(diff)
+		} else {
+			promptText = prompt.BuildRetry(diff, previousSuggestions)
+		}
+		msg, err := mg.Generate(promptText)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
@@ -154,6 +161,7 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, 
 				}
 				continue
 			case "r":
+				previousSuggestions = append(previousSuggestions, msg)
 				break confirmLoop
 			case "c":
 				fmt.Fprintln(stderr, "Cancelled.")
