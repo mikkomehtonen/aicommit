@@ -76,7 +76,7 @@ func TestRun_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -97,7 +97,7 @@ func TestRun_whitespaceOnlyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -109,7 +109,7 @@ func TestRun_printMode(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: add something"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -127,7 +127,7 @@ func TestRun_generateError(t *testing.T) {
 	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -142,7 +142,7 @@ func TestRun_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -160,7 +160,7 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -178,7 +178,7 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -196,7 +196,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr)
+	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -212,7 +212,7 @@ func TestInteractiveCommit_accept(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -231,7 +231,7 @@ func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
 	stdin := strings.NewReader("\n") // Enter = accept
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -247,7 +247,7 @@ func TestInteractiveCommit_retry(t *testing.T) {
 	stdin := strings.NewReader("r\na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -266,7 +266,7 @@ func TestInteractiveCommit_cancel(t *testing.T) {
 	stdin := strings.NewReader("c\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -285,7 +285,7 @@ func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 	stdin := strings.NewReader("a\na\n") // first accept hits empty, second succeeds
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -307,7 +307,7 @@ func TestInteractiveCommit_commitError(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -323,7 +323,7 @@ func TestInteractiveCommit_generateError(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -339,7 +339,7 @@ func TestInteractiveCommit_unknownChoice(t *testing.T) {
 	stdin := strings.NewReader("x\na\n") // unknown then accept
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -358,7 +358,7 @@ func TestInteractiveCommit_eof(t *testing.T) {
 	stdin := strings.NewReader("") // immediate EOF
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -374,7 +374,7 @@ func TestInteractiveCommit_editThenAccept(t *testing.T) {
 	stdin := strings.NewReader("e\nfeat: edited message\na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -393,7 +393,7 @@ func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
 	stdin := strings.NewReader("e\n\na\n") // edit with empty input, then accept
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -412,7 +412,7 @@ func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
 	stdin := strings.NewReader("e\n   \na\n") // edit with whitespace-only input, then accept
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -428,7 +428,7 @@ func TestInteractiveCommit_editThenCancel(t *testing.T) {
 	stdin := strings.NewReader("e\nfeat: edited\nc\n") // edit, then cancel
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -447,7 +447,7 @@ func TestInteractiveCommit_editThenRetry(t *testing.T) {
 	stdin := strings.NewReader("e\nfeat: edited\nr\na\n") // edit, then retry (regenerate), then accept
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -466,7 +466,7 @@ func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
 	stdin := strings.NewReader("e\n  feat: trimmed  \na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -482,7 +482,7 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	stdin := strings.NewReader("e\nfeat: first edit\ne\nfeat: final edit\na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -511,7 +511,7 @@ func TestRun_acceptsIOInterfaces(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// This just verifies the function signature accepts io.Reader/io.Writer.
-	err := run(dp, mg, io.NopCloser(strings.NewReader("")), &stdout, &stderr)
+	err := run(dp, mg, io.NopCloser(strings.NewReader("")), &stdout, &stderr, 0.1, 0.4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -523,7 +523,7 @@ func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -545,7 +545,7 @@ func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -561,7 +561,7 @@ func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 	stdin := strings.NewReader("a\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -580,7 +580,7 @@ func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 	stdin := strings.NewReader("r\na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -611,7 +611,7 @@ func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
 	stdin := strings.NewReader("r\nr\na\n")
 	var stdout, stderr bytes.Buffer
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr)
+	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

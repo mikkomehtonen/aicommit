@@ -81,6 +81,22 @@ The app connects to LM Studio at `http://localhost:1234` using the model `qwen/q
 AICOMMIT_URL=http://localhost:1234/v1/chat/completions AICOMMIT_MODEL=my-model aicommit
 ```
 
+### Temperature
+
+Control the LLM's randomness with two settings:
+
+| Setting | Default | Env Var | CLI Flag |
+|---------|---------|---------|----------|
+| First request | `0.1` | `AICOMMIT_TEMPERATURE` | `--temperature` |
+| Retry requests | `0.4` | `AICOMMIT_RETRY_TEMPERATURE` | `--retry-temperature` |
+
+Lower temperature produces more deterministic output; higher temperature increases creativity and variety:
+
+```bash
+AICOMMIT_TEMPERATURE=0.2 AICOMMIT_RETRY_TEMPERATURE=0.6 aicommit --commit
+aicommit --temperature 0.2 --retry-temperature 0.6 --commit
+```
+
 ## Testing
 
 ```bash
