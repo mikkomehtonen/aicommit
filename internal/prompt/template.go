@@ -1,6 +1,9 @@
 package prompt
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const template = `You are an expert software engineer.
 Generate a concise Conventional Commit message from the following git diff.
@@ -28,9 +31,11 @@ func Build(diff string) string {
 // BuildRetry constructs a retry prompt that includes previously rejected
 // suggestions so the model generates a different commit message.
 func BuildRetry(diff string, previousSuggestions []string) string {
-	suggestions := ""
+	var sb strings.Builder
 	for _, s := range previousSuggestions {
-		suggestions += "- " + s + "\n"
+		sb.WriteString("- ")
+		sb.WriteString(s)
+		sb.WriteString("\n")
 	}
-	return fmt.Sprintf(retryTemplate, suggestions, diff)
+	return fmt.Sprintf(retryTemplate, sb.String(), diff)
 }
