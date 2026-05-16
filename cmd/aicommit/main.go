@@ -56,7 +56,16 @@ func main() {
 		Short: "Generate Conventional Commit messages using a local LLM",
 		Long:  "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(realGit{}, llm.NewClient(), os.Stdin, os.Stdout, os.Stderr, temperatureFlag, retryTemperatureFlag)
+			client := llm.NewClient()
+			temp := temperatureFlag
+			retryTemp := retryTemperatureFlag
+			if !cmd.Flags().Changed("temperature") {
+				temp = client.Temperature
+			}
+			if !cmd.Flags().Changed("retry-temperature") {
+				retryTemp = client.RetryTemperature
+			}
+			return run(realGit{}, client, os.Stdin, os.Stdout, os.Stderr, temp, retryTemp)
 		},
 	}
 
