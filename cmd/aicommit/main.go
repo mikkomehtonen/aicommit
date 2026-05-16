@@ -45,6 +45,18 @@ func (realGit) AllDiff() (string, error)    { return git.AllDiff() }
 func (realGit) Commit(msg string) error      { return git.Commit(msg) }
 func (realGit) CommitAll(msg string) error    { return git.CommitAll(msg) }
 
+// RunConfig holds the dependencies and settings for run.
+type RunConfig struct {
+	DiffProvider       DiffProvider
+	Generator          MessageGenerator
+	Committer          Committer
+	Stdin              io.Reader
+	Stdout             io.Writer
+	Stderr             io.Writer
+	Temperature        float64
+	RetryTemperature   float64
+}
+
 var commitFlag bool
 var allFlag bool
 var temperatureFlag float64
@@ -65,7 +77,16 @@ func main() {
 			if !cmd.Flags().Changed("retry-temperature") {
 				retryTemp = client.RetryTemperature
 			}
-			return run(realGit{}, client, realGit{}, os.Stdin, os.Stdout, os.Stderr, temp, retryTemp)
+			return run(RunConfig{
+				DiffProvider:     realGit{},
+				Generator:        client,
+				Committer:        realGit{},
+				Stdin:            os.Stdin,
+				Stdout:           os.Stdout,
+				Stderr:           os.Stderr,
+				Temperature:      temp,
+				RetryTemperature: retryTemp,
+			})
 		},
 	}
 
@@ -79,31 +100,31 @@ func main() {
 	}
 }
 
-func run(dp DiffProvider, mg MessageGenerator, c Committer, stdin io.Reader, stdout, stderr io.Writer, temperature, retryTemperature float64) error {
-	diff, err := diffForMode(dp)
+func run(cfg RunConfig) error {
+	diff, err := diffForMode(cfg.DiffProvider)
 	if err != nil {
 		return err
 	}
 
 	if strings.TrimSpace(diff) == "" {
 		if allFlag {
-			fmt.Fprintln(stderr, "No changes found.")
+			fmt.Fprintln(cfg.Stderr, "No changes found.")
 		} else {
-			fmt.Fprintln(stderr, "No staged changes found. Stage your changes with: git add <files>\nOr use --all to include all changes.")
+			fmt.Fprintln(cfg.Stderr, "No staged changes found. Stage your changes with: git add <files>\nOr use --all to include all changes.")
 		}
 		return errEmptyDiff
 	}
 
 	if !commitFlag {
-		msg, err := generateWithFallback(mg, prompt.Build(diff), temperature)
+		msg, err := generateWithFallback(cfg.Generator, prompt.Build(diff), cfg.Temperature)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
-		fmt.Fprintln(stdout, strings.TrimSpace(msg))
+		fmt.Fprintln(cfg.Stdout, strings.TrimSpace(msg))
 		return nil
 	}
 
-	return interactiveCommit(diff, mg, c, allFlag, stdin, stdout, stderr, temperature, retryTemperature)
+	return interactiveCommit(cfg, diff, allFlag)
 }
 
 func diffForMode(dp DiffProvider) (string, error) {
@@ -132,8 +153,8 @@ func generateWithFallback(mg MessageGenerator, prompt string, temperature float6
 	return mg.Generate(prompt)
 }
 
-func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, stdin io.Reader, stdout, stderr io.Writer, temperature, retryTemperature float64) error {
-	scanner := bufio.NewScanner(stdin)
+func interactiveCommit(cfg RunConfig, diff string, all bool) error {
+	scanner := bufio.NewScanner(cfg.Stdin)
 	var previousSuggestions []string
 	isRetry := false
 
@@ -144,11 +165,11 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, 
 		} else {
 			promptText = prompt.Build(diff)
 		}
-		genTemp := temperature
+		genTemp := cfg.Temperature
 		if isRetry {
-			genTemp = retryTemperature
+			genTemp = cfg.RetryTemperature
 		}
-		msg, err := generateWithFallback(mg, promptText, genTemp)
+		msg, err := generateWithFallback(cfg.Generator, promptText, genTemp)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
@@ -157,11 +178,11 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, 
 		// Confirmation loop: allows editing without regenerating.
 	confirmLoop:
 		for {
-			fmt.Fprintln(stdout, msg)
-			fmt.Fprint(stdout, "[a]ccept, [e]dit, [r]etry, [c]ancel: ")
+			fmt.Fprintln(cfg.Stdout, msg)
+			fmt.Fprint(cfg.Stdout, "[a]ccept, [e]dit, [r]etry, [c]ancel: ")
 
 			if !scanner.Scan() {
-				fmt.Fprintln(stdout)
+				fmt.Fprintln(cfg.Stdout)
 				return nil
 			}
 
@@ -169,23 +190,23 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, 
 			switch choice {
 			case "a", "":
 				if msg == "" {
-					fmt.Fprintln(stderr, "Error: generated commit message is empty, retrying.")
+					fmt.Fprintln(cfg.Stderr, "Error: generated commit message is empty, retrying.")
 					break confirmLoop
 				}
 				if all {
-					if err := c.CommitAll(msg); err != nil {
+					if err := cfg.Committer.CommitAll(msg); err != nil {
 						return fmt.Errorf("committing: %w", err)
 					}
 				} else {
-					if err := c.Commit(msg); err != nil {
+					if err := cfg.Committer.Commit(msg); err != nil {
 						return fmt.Errorf("committing: %w", err)
 					}
 				}
 				return nil
 			case "e":
-				fmt.Fprint(stdout, "Edit message: ")
+				fmt.Fprint(cfg.Stdout, "Edit message: ")
 				if !scanner.Scan() {
-					fmt.Fprintln(stdout)
+					fmt.Fprintln(cfg.Stdout)
 					return nil
 				}
 				edited := strings.TrimSpace(scanner.Text())
@@ -198,10 +219,10 @@ func interactiveCommit(diff string, mg MessageGenerator, c Committer, all bool, 
 				isRetry = true
 				break confirmLoop
 			case "c":
-				fmt.Fprintln(stderr, "Cancelled.")
+				fmt.Fprintln(cfg.Stderr, "Cancelled.")
 				return nil
 			default:
-				fmt.Fprintf(stderr, "Unknown choice %q, use [a]ccept, [e]dit, [r]etry, or [c]ancel.\n", choice)
+				fmt.Fprintf(cfg.Stderr, "Unknown choice %q, use [a]ccept, [e]dit, [r]etry, or [c]ancel.\n", choice)
 			}
 		}
 	}

@@ -24,13 +24,13 @@ func (f *fakeDiffProvider) AllDiff() (string, error) { return f.diff, f.err }
 type fakeCommitter struct {
 	committed    []string
 	committedAll []string
-	err          error // return this error on next Commit/CommitAll call
+	err          error
 }
 
 func (f *fakeCommitter) Commit(msg string) error {
 	if f.err != nil {
 		err := f.err
-		f.err = nil // one-shot error
+		f.err = nil
 		return err
 	}
 	f.committed = append(f.committed, msg)
@@ -40,7 +40,7 @@ func (f *fakeCommitter) Commit(msg string) error {
 func (f *fakeCommitter) CommitAll(msg string) error {
 	if f.err != nil {
 		err := f.err
-		f.err = nil // one-shot error
+		f.err = nil
 		return err
 	}
 	f.committedAll = append(f.committedAll, msg)
@@ -48,17 +48,17 @@ func (f *fakeCommitter) CommitAll(msg string) error {
 }
 
 type fakeGenerator struct {
-	msgs    []string // responses returned in order
+	msgs    []string
 	index   int
-	err     error    // return this error on next Generate call
-	prompts []string // captured prompts passed to Generate
+	err     error
+	prompts []string
 }
 
 func (f *fakeGenerator) Generate(prompt string) (string, error) {
 	f.prompts = append(f.prompts, prompt)
 	if f.err != nil {
 		err := f.err
-		f.err = nil // one-shot error
+		f.err = nil
 		return "", err
 	}
 	if f.index < len(f.msgs) {
@@ -76,7 +76,16 @@ func TestRun_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -97,7 +106,16 @@ func TestRun_whitespaceOnlyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -109,12 +127,20 @@ func TestRun_printMode(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: add something"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Output should be the trimmed message with a trailing newline.
 	got := stdout.String()
 	want := "feat: add something\n"
 	if got != want {
@@ -127,7 +153,16 @@ func TestRun_generateError(t *testing.T) {
 	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -142,7 +177,16 @@ func TestRun_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -160,7 +204,16 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -178,7 +231,16 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -196,7 +258,16 @@ func TestRun_allFlag_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -206,13 +277,25 @@ func TestRun_allFlag_diffError(t *testing.T) {
 	}
 }
 
+func makeIC(mg *fakeGenerator, c *fakeCommitter, stdin string, all bool) RunConfig {
+	var stdout, stderr bytes.Buffer
+	return RunConfig{
+		Generator:        mg,
+		Committer:        c,
+		Stdin:            strings.NewReader(stdin),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	}
+}
+
 func TestInteractiveCommit_accept(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: new thing"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -228,10 +311,9 @@ func TestInteractiveCommit_accept(t *testing.T) {
 func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"fix: bug"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("\n") // Enter = accept
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -244,10 +326,9 @@ func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
 func TestInteractiveCommit_retry(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"bad message", "good message"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("r\na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -263,10 +344,9 @@ func TestInteractiveCommit_retry(t *testing.T) {
 func TestInteractiveCommit_cancel(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("c\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "c\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -274,18 +354,17 @@ func TestInteractiveCommit_cancel(t *testing.T) {
 	if len(c.committed) != 0 {
 		t.Errorf("expected 0 commits, got %d", len(c.committed))
 	}
-	if !strings.Contains(stderr.String(), "Cancelled") {
-		t.Errorf("stderr = %q, want 'Cancelled'", stderr.String())
+	if !strings.Contains(cfg.Stderr.(*bytes.Buffer).String(), "Cancelled") {
+		t.Errorf("stderr = %q, want 'Cancelled'", cfg.Stderr.(*bytes.Buffer).String())
 	}
 }
 
 func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"  ", "feat: real message"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("a\na\n") // first accept hits empty, second succeeds
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -296,18 +375,17 @@ func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 	if c.committed[0] != "feat: real message" {
 		t.Errorf("committed %q, want %q", c.committed[0], "feat: real message")
 	}
-	if !strings.Contains(stderr.String(), "empty") {
-		t.Errorf("stderr should mention empty message, got %q", stderr.String())
+	if !strings.Contains(cfg.Stderr.(*bytes.Buffer).String(), "empty") {
+		t.Errorf("stderr should mention empty message, got %q", cfg.Stderr.(*bytes.Buffer).String())
 	}
 }
 
 func TestInteractiveCommit_commitError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
 	c := &fakeCommitter{err: fmt.Errorf("git commit failed")}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -320,10 +398,9 @@ func TestInteractiveCommit_commitError(t *testing.T) {
 func TestInteractiveCommit_generateError(t *testing.T) {
 	mg := &fakeGenerator{err: fmt.Errorf("LLM error")}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -336,16 +413,15 @@ func TestInteractiveCommit_generateError(t *testing.T) {
 func TestInteractiveCommit_unknownChoice(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: first"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("x\na\n") // unknown then accept
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "x\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "Unknown choice") {
-		t.Errorf("stderr should mention unknown choice, got %q", stderr.String())
+	if !strings.Contains(cfg.Stderr.(*bytes.Buffer).String(), "Unknown choice") {
+		t.Errorf("stderr should mention unknown choice, got %q", cfg.Stderr.(*bytes.Buffer).String())
 	}
 	if c.committed[0] != "feat: first" {
 		t.Errorf("committed %q, want %q (unknown choice re-prompts same message)", c.committed[0], "feat: first")
@@ -355,10 +431,9 @@ func TestInteractiveCommit_unknownChoice(t *testing.T) {
 func TestInteractiveCommit_eof(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("") // immediate EOF
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -371,10 +446,9 @@ func TestInteractiveCommit_eof(t *testing.T) {
 func TestInteractiveCommit_editThenAccept(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\nfeat: edited message\na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\nfeat: edited message\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -390,10 +464,9 @@ func TestInteractiveCommit_editThenAccept(t *testing.T) {
 func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\n\na\n") // edit with empty input, then accept
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\n\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -409,10 +482,9 @@ func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
 func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\n   \na\n") // edit with whitespace-only input, then accept
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\n   \na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -425,10 +497,9 @@ func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
 func TestInteractiveCommit_editThenCancel(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\nfeat: edited\nc\n") // edit, then cancel
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\nfeat: edited\nc\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -436,18 +507,17 @@ func TestInteractiveCommit_editThenCancel(t *testing.T) {
 	if len(c.committed) != 0 {
 		t.Errorf("expected 0 commits, got %d", len(c.committed))
 	}
-	if !strings.Contains(stderr.String(), "Cancelled") {
-		t.Errorf("stderr = %q, want 'Cancelled'", stderr.String())
+	if !strings.Contains(cfg.Stderr.(*bytes.Buffer).String(), "Cancelled") {
+		t.Errorf("stderr = %q, want 'Cancelled'", cfg.Stderr.(*bytes.Buffer).String())
 	}
 }
 
 func TestInteractiveCommit_editThenRetry(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original", "feat: regenerated"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\nfeat: edited\nr\na\n") // edit, then retry (regenerate), then accept
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\nfeat: edited\nr\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -463,10 +533,9 @@ func TestInteractiveCommit_editThenRetry(t *testing.T) {
 func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\n  feat: trimmed  \na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\n  feat: trimmed  \na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -479,10 +548,9 @@ func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
 func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: original"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("e\nfeat: first edit\ne\nfeat: final edit\na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "e\nfeat: first edit\ne\nfeat: final edit\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -492,26 +560,31 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	}
 }
 
-// Verify that the realGit type satisfies the interfaces at compile time.
 func TestInterfaceCompliance(t *testing.T) {
 	var _ DiffProvider = (*realGit)(nil)
 	var _ Committer = (*realGit)(nil)
 	var _ MessageGenerator = (*llmClient)(nil)
 }
 
-// Wrapper to satisfy MessageGenerator for the real llm.Client.
 type llmClient struct{}
 
 func (llmClient) Generate(prompt string) (string, error) { return "", nil }
 
-// Verify io.Reader/io.Writer are accepted where expected.
 func TestRun_acceptsIOInterfaces(t *testing.T) {
 	dp := &fakeDiffProvider{diff: "diff", err: nil}
 	mg := &fakeGenerator{msgs: []string{"feat: test"}}
 	var stdout, stderr bytes.Buffer
 
-	// This just verifies the function signature accepts io.Reader/io.Writer.
-	err := run(dp, mg, &fakeCommitter{}, io.NopCloser(strings.NewReader("")), &stdout, &stderr, 0.1, 0.4)
+	err := run(RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            io.NopCloser(strings.NewReader("")),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -520,10 +593,9 @@ func TestRun_acceptsIOInterfaces(t *testing.T) {
 func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", true)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -542,10 +614,9 @@ func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
 	c := &fakeCommitter{err: fmt.Errorf("git commit -a failed")}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit("some diff", mg, c, true, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", true)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -558,10 +629,9 @@ func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: staged changes"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("a\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -577,10 +647,9 @@ func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: first attempt", "feat: second attempt"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("r\na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -588,12 +657,10 @@ func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 	if len(mg.prompts) != 2 {
 		t.Fatalf("expected 2 Generate calls, got %d", len(mg.prompts))
 	}
-	// First call should use the normal Build prompt.
 	firstPrompt := prompt.Build("some diff")
 	if mg.prompts[0] != firstPrompt {
 		t.Errorf("first prompt = %q, want %q", mg.prompts[0], firstPrompt)
 	}
-	// Second call should use BuildRetry and include the rejected suggestion.
 	if !strings.Contains(mg.prompts[1], "feat: first attempt") {
 		t.Errorf("retry prompt should contain rejected suggestion, got %q", mg.prompts[1])
 	}
@@ -608,10 +675,9 @@ func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: first", "feat: second", "feat: third"}}
 	c := &fakeCommitter{}
-	stdin := strings.NewReader("r\nr\na\n")
-	var stdout, stderr bytes.Buffer
+	cfg := makeIC(mg, c, "r\nr\na\n", false)
 
-	err := interactiveCommit("some diff", mg, c, false, stdin, &stdout, &stderr, 0.1, 0.4)
+	err := interactiveCommit(cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -619,15 +685,12 @@ func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
 	if len(mg.prompts) != 3 {
 		t.Fatalf("expected 3 Generate calls, got %d", len(mg.prompts))
 	}
-	// First call: normal Build.
 	if mg.prompts[0] != prompt.Build("some diff") {
 		t.Errorf("first prompt should be normal Build, got %q", mg.prompts[0])
 	}
-	// Second call: BuildRetry with one rejected suggestion.
 	if !strings.Contains(mg.prompts[1], "feat: first") {
 		t.Errorf("second prompt should contain first suggestion, got %q", mg.prompts[1])
 	}
-	// Third call: BuildRetry with two rejected suggestions.
 	if !strings.Contains(mg.prompts[2], "feat: first") {
 		t.Errorf("third prompt should contain first suggestion, got %q", mg.prompts[2])
 	}
