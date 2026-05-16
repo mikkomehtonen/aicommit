@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -14,6 +15,7 @@ const (
 	defaultModel            = "qwen/qwen3.6-27b"
 	defaultTemperature      = 0.1
 	defaultRetryTemperature = 0.4
+	defaultTimeout          = 60 * time.Second
 )
 
 // request is the payload sent to the OpenAI-compatible chat completions endpoint.
@@ -54,7 +56,7 @@ type Client struct {
 // AICOMMIT_RETRY_TEMPERATURE (retry requests), falling back to their defaults.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient:     http.DefaultClient,
+		HTTPClient:     &http.Client{Timeout: defaultTimeout},
 		URL:            envURL(),
 		Model:          envModel(),
 		Temperature:    envTemperature(),
