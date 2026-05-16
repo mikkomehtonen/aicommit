@@ -77,7 +77,7 @@ func main() {
 			if !cmd.Flags().Changed("retry-temperature") {
 				retryTemp = client.RetryTemperature
 			}
-			return run(RunConfig{
+			err := run(RunConfig{
 				DiffProvider:     realGit{},
 				Generator:        client,
 				Committer:        realGit{},
@@ -87,6 +87,10 @@ func main() {
 				Temperature:      temp,
 				RetryTemperature: retryTemp,
 			})
+			if err == errEmptyDiff {
+				os.Exit(1)
+			}
+			return err
 		},
 	}
 
