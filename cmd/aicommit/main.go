@@ -65,7 +65,7 @@ func main() {
 			if !cmd.Flags().Changed("retry-temperature") {
 				retryTemp = client.RetryTemperature
 			}
-			return run(realGit{}, client, os.Stdin, os.Stdout, os.Stderr, temp, retryTemp)
+			return run(realGit{}, client, realGit{}, os.Stdin, os.Stdout, os.Stderr, temp, retryTemp)
 		},
 	}
 
@@ -79,7 +79,7 @@ func main() {
 	}
 }
 
-func run(dp DiffProvider, mg MessageGenerator, stdin io.Reader, stdout, stderr io.Writer, temperature, retryTemperature float64) error {
+func run(dp DiffProvider, mg MessageGenerator, c Committer, stdin io.Reader, stdout, stderr io.Writer, temperature, retryTemperature float64) error {
 	diff, err := diffForMode(dp)
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func run(dp DiffProvider, mg MessageGenerator, stdin io.Reader, stdout, stderr i
 		return nil
 	}
 
-	return interactiveCommit(diff, mg, realGit{}, allFlag, stdin, stdout, stderr, temperature, retryTemperature)
+	return interactiveCommit(diff, mg, c, allFlag, stdin, stdout, stderr, temperature, retryTemperature)
 }
 
 func diffForMode(dp DiffProvider) (string, error) {

@@ -76,7 +76,7 @@ func TestRun_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -97,7 +97,7 @@ func TestRun_whitespaceOnlyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -109,7 +109,7 @@ func TestRun_printMode(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: add something"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -127,7 +127,7 @@ func TestRun_generateError(t *testing.T) {
 	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -142,7 +142,7 @@ func TestRun_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -160,7 +160,7 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -178,7 +178,7 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err != errEmptyDiff {
 		t.Errorf("expected errEmptyDiff, got %v", err)
@@ -196,7 +196,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(dp, mg, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, strings.NewReader(""), &stdout, &stderr, 0.1, 0.4)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -511,7 +511,7 @@ func TestRun_acceptsIOInterfaces(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// This just verifies the function signature accepts io.Reader/io.Writer.
-	err := run(dp, mg, io.NopCloser(strings.NewReader("")), &stdout, &stderr, 0.1, 0.4)
+	err := run(dp, mg, &fakeCommitter{}, io.NopCloser(strings.NewReader("")), &stdout, &stderr, 0.1, 0.4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
