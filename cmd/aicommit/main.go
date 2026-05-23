@@ -220,6 +220,9 @@ func interactiveCommit(cfg RunConfig, diff string, all bool) error {
 				continue
 			case "r":
 				previousSuggestions = append(previousSuggestions, msg)
+				if len(previousSuggestions) > 5 {
+					previousSuggestions = previousSuggestions[len(previousSuggestions)-5:]
+				}
 				isRetry = true
 				break confirmLoop
 			case "c":
