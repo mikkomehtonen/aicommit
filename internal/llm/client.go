@@ -91,6 +91,7 @@ func envTemperature() float64 {
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
 			return val
 		}
+		fmt.Fprintf(os.Stderr, "warning: AICOMMIT_TEMPERATURE=%q is not a valid float, using default %f\n", t, defaultTemperature)
 	}
 	return defaultTemperature
 }
@@ -104,6 +105,7 @@ func envRetryTemperature() float64 {
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
 			return val
 		}
+		fmt.Fprintf(os.Stderr, "warning: AICOMMIT_RETRY_TEMPERATURE=%q is not a valid float, using default %f\n", t, defaultRetryTemperature)
 	}
 	return defaultRetryTemperature
 }
