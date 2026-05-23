@@ -6,10 +6,15 @@ import (
 	"os/exec"
 )
 
+// execRun is a test-replaceable wrapper around exec.Cmd.CombinedOutput.
+var execRun = func(cmd *exec.Cmd) ([]byte, error) {
+	return cmd.CombinedOutput()
+}
+
 // StagedDiff returns the output of `git diff --staged`.
 func StagedDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "--staged")
-	out, err := cmd.CombinedOutput()
+	out, err := execRun(cmd)
 	if err != nil {
 		return "", fmt.Errorf("running git diff --staged: %w\n%s", err, string(out))
 	}
@@ -19,7 +24,7 @@ func StagedDiff() (string, error) {
 // AllDiff returns the output of `git diff HEAD`.
 func AllDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "HEAD")
-	out, err := cmd.CombinedOutput()
+	out, err := execRun(cmd)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 128 {
