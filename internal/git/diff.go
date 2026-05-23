@@ -1,9 +1,9 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 // StagedDiff returns the output of `git diff --staged`.
@@ -21,8 +21,9 @@ func AllDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "HEAD")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if strings.Contains(string(out), "ambiguous argument 'HEAD'") {
-			return "", fmt.Errorf("no commits yet; use --staged or make an initial commit first")
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 128 {
+			return "", nil
 		}
 		return "", fmt.Errorf("running git diff HEAD: %w\n%s", err, string(out))
 	}
