@@ -28,9 +28,10 @@ func TestBuild_emptyDiff(t *testing.T) {
 	if !strings.Contains(got, "Conventional Commit") {
 		t.Error("Build with empty diff should still contain prompt instructions")
 	}
-	// The diff placeholder (%s) should resolve to empty string at the end.
-	if !strings.HasSuffix(strings.TrimSpace(got), "") {
-		t.Error("Build with empty diff should handle empty diff gracefully")
+	// Template should render with the diff placeholder resolved to empty string.
+	expectedSuffix := "\n"
+	if !strings.HasSuffix(got, expectedSuffix) {
+		t.Errorf("Build with empty diff should end with newline, got: %q", got)
 	}
 }
 
