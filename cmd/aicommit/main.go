@@ -47,22 +47,26 @@ func (realGit) CommitAll(msg string) error    { return git.CommitAll(msg) }
 
 // RunConfig holds the dependencies and settings for run.
 type RunConfig struct {
-	DiffProvider       DiffProvider
-	Generator          MessageGenerator
-	Committer          Committer
-	Stdin              io.Reader
-	Stdout             io.Writer
-	Stderr             io.Writer
-	Temperature        float64
-	RetryTemperature   float64
+	DiffProvider     DiffProvider
+	Generator        MessageGenerator
+	Committer        Committer
+	Stdin            io.Reader
+	Stdout           io.Writer
+	Stderr           io.Writer
+	Temperature      float64
+	RetryTemperature float64
+	AllFlag          bool
+	CommitFlag       bool
 }
 
-var commitFlag bool
-var allFlag bool
-var temperatureFlag float64
-var retryTemperatureFlag float64
-
 func main() {
+	var (
+		commitFlag       bool
+		allFlag          bool
+		temperatureFlag  float64
+		retryTemperatureFlag float64
+	)
+
 	rootCmd := &cobra.Command{
 		Use:   "aicommit",
 		Short: "Generate Conventional Commit messages using a local LLM",
@@ -86,6 +90,8 @@ func main() {
 				Stderr:           os.Stderr,
 				Temperature:      temp,
 				RetryTemperature: retryTemp,
+				AllFlag:          allFlag,
+				CommitFlag:       commitFlag,
 			})
 			if err == errEmptyDiff {
 				os.Exit(1)
@@ -105,13 +111,13 @@ func main() {
 }
 
 func run(cfg RunConfig) error {
-	diff, err := diffForMode(cfg.DiffProvider)
+	diff, err := diffForMode(cfg.DiffProvider, cfg.AllFlag)
 	if err != nil {
 		return err
 	}
 
 	if strings.TrimSpace(diff) == "" {
-		if allFlag {
+		if cfg.AllFlag {
 			fmt.Fprintln(cfg.Stderr, "No changes found.")
 		} else {
 			fmt.Fprintln(cfg.Stderr, "No staged changes found. Stage your changes with: git add <files>\nOr use --all to include all changes.")
@@ -119,7 +125,7 @@ func run(cfg RunConfig) error {
 		return errEmptyDiff
 	}
 
-	if !commitFlag {
+	if !cfg.CommitFlag {
 		msg, err := generateWithFallback(cfg.Generator, prompt.Build(diff), cfg.Temperature)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
@@ -128,11 +134,11 @@ func run(cfg RunConfig) error {
 		return nil
 	}
 
-	return interactiveCommit(cfg, diff, allFlag)
+	return interactiveCommit(cfg, diff, cfg.AllFlag)
 }
 
-func diffForMode(dp DiffProvider) (string, error) {
-	if allFlag {
+func diffForMode(dp DiffProvider, all bool) (string, error) {
+	if all {
 		diff, err := dp.AllDiff()
 		if err != nil {
 			return "", fmt.Errorf("getting diff: %w", err)

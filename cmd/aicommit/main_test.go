@@ -197,9 +197,6 @@ func TestRun_diffError(t *testing.T) {
 }
 
 func TestRun_allFlag_usesAllDiff(t *testing.T) {
-	allFlag = true
-	defer func() { allFlag = false }()
-
 	dp := &fakeDiffProvider{diff: "all changes diff", err: nil}
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	var stdout, stderr bytes.Buffer
@@ -213,6 +210,7 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 		Stderr:           &stderr,
 		Temperature:      0.1,
 		RetryTemperature: 0.4,
+		AllFlag:          true,
 	})
 
 	if err != nil {
@@ -224,9 +222,6 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 }
 
 func TestRun_allFlag_emptyDiff(t *testing.T) {
-	allFlag = true
-	defer func() { allFlag = false }()
-
 	dp := &fakeDiffProvider{diff: "", err: nil}
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
@@ -240,6 +235,7 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 		Stderr:           &stderr,
 		Temperature:      0.1,
 		RetryTemperature: 0.4,
+		AllFlag:          true,
 	})
 
 	if err != errEmptyDiff {
@@ -251,9 +247,6 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 }
 
 func TestRun_allFlag_diffError(t *testing.T) {
-	allFlag = true
-	defer func() { allFlag = false }()
-
 	dp := &fakeDiffProvider{err: fmt.Errorf("git not found")}
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
@@ -267,6 +260,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 		Stderr:           &stderr,
 		Temperature:      0.1,
 		RetryTemperature: 0.4,
+		AllFlag:          true,
 	})
 
 	if err == nil {
