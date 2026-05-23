@@ -24,6 +24,9 @@ func TestGenerate_success(t *testing.T) {
 		if len(req.Messages) != 1 || req.Messages[0].Role != "user" {
 			t.Errorf("expected single user message, got %v", req.Messages)
 		}
+		if r.Header.Get("Accept") != "application/json" {
+			t.Errorf("expected Accept: application/json, got: %q", r.Header.Get("Accept"))
+		}
 
 		resp := response{
 			Choices: []choice{

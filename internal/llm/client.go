@@ -128,7 +128,13 @@ func (c *Client) GenerateWithTemperature(prompt string, temperature float64) (st
 		return "", fmt.Errorf("marshaling request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Post(c.URL, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", c.URL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("sending request to LLM: %w", err)
 	}
