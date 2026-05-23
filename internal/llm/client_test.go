@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,7 @@ func TestGenerate_customModel(t *testing.T) {
 		resp := response{
 			Choices: []choice{{Message: message{Content: "ok"}}},
 		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
@@ -80,6 +82,7 @@ func TestGenerate_customModel(t *testing.T) {
 func TestGenerate_emptyChoices(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := response{Choices: []choice{}}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
@@ -143,6 +146,7 @@ func TestGenerate_trimsWhitespaceInResponse(t *testing.T) {
 				{Message: message{Content: "  feat: something  \n"}},
 			},
 		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
@@ -173,6 +177,7 @@ func TestGenerateWithTemperature_sendsTemperature(t *testing.T) {
 		resp := response{
 			Choices: []choice{{Message: message{Content: "ok"}}},
 		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
@@ -203,6 +208,7 @@ func TestGenerateWithTemperature_defaultTemperature(t *testing.T) {
 		resp := response{
 			Choices: []choice{{Message: message{Content: "ok"}}},
 		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
@@ -263,5 +269,28 @@ func TestEnvRetryTemperature_emptyValue(t *testing.T) {
 	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "")
 	if got := envRetryTemperature(); got != defaultRetryTemperature {
 		t.Errorf("envRetryTemperature() = %f, want default %f", got, defaultRetryTemperature)
+	}
+}
+
+func TestGenerate_nonJSONResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		HTTPClient: srv.Client(),
+		URL:        srv.URL,
+		Model:      "test-model",
+	}
+
+	_, err := client.Generate("prompt")
+	if err == nil {
+		t.Fatal("expected error for non-JSON response, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected content type") {
+		t.Errorf("error = %q, wanted it to contain %q", err.Error(), "unexpected content type")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -134,6 +135,12 @@ func (c *Client) GenerateWithTemperature(prompt string, temperature float64) (st
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("LLM returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected content type %q: %s", ct, string(respBody))
 	}
 
 	var result response
