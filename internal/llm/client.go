@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -150,7 +152,12 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
+			delay := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			jitter := time.Duration(rand.Float64() * float64(delay) * 0.3)
+			time.Sleep(delay + jitter)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, "POST", c.URL, bytes.NewReader(body))
