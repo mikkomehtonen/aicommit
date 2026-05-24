@@ -26,6 +26,7 @@ CHANGE / EDIT MODE
 go build ./cmd/aicommit   # build binary
 go vet ./...              # static analysis
 go test ./...             # run tests
+go fmt ./...              # format code
 ```
 
 Module name is `aicommit` (no remote path). Single binary, no subcommands.

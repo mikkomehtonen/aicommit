@@ -26,8 +26,8 @@ type fakeExitError struct {
 	code int
 }
 
-func (e *fakeExitError) Error() string   { return fmt.Sprintf("exit status %d", e.code) }
-func (e *fakeExitError) ExitCode() int   { return e.code }
+func (e *fakeExitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+func (e *fakeExitError) ExitCode() int { return e.code }
 
 func TestStagedDiff(t *testing.T) {
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {

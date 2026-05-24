@@ -219,10 +219,10 @@ func TestGenerateWithTemperature_defaultTemperature(t *testing.T) {
 	defer srv.Close()
 
 	client := &Client{
-		HTTPClient:    srv.Client(),
-		URL:           srv.URL,
-		Model:         "test-model",
-		Temperature:   0.5,
+		HTTPClient:       srv.Client(),
+		URL:              srv.URL,
+		Model:            "test-model",
+		Temperature:      0.5,
 		RetryTemperature: 0.8,
 	}
 
