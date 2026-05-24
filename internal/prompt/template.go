@@ -1,7 +1,6 @@
 package prompt
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -10,7 +9,7 @@ Generate a concise Conventional Commit message from the following git diff.
 Return only the commit message.
 Do not use markdown.
 
-%s`
+{DIFF}`
 
 const retryTemplate = `You are an expert software engineer.
 Generate a concise Conventional Commit message from the following git diff.
@@ -18,14 +17,14 @@ Return only the commit message.
 Do not use markdown.
 
 The user rejected these previous suggestions:
-%s
+{SUGGESTIONS}
 Generate a different Conventional Commit message. Do not reuse the same wording.
 
-%s`
+{DIFF}`
 
 // Build constructs the prompt by injecting the diff into the template.
 func Build(diff string) string {
-	return fmt.Sprintf(template, diff)
+	return strings.Replace(template, "{DIFF}", diff, 1)
 }
 
 // BuildRetry constructs a retry prompt that includes previously rejected
@@ -37,5 +36,6 @@ func BuildRetry(diff string, previousSuggestions []string) string {
 		sb.WriteString(s)
 		sb.WriteString("\n")
 	}
-	return fmt.Sprintf(retryTemplate, sb.String(), diff)
+	res := strings.Replace(retryTemplate, "{SUGGESTIONS}", sb.String(), 1)
+	return strings.Replace(res, "{DIFF}", diff, 1)
 }
