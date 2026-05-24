@@ -176,29 +176,32 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 			continue
 		}
 
-		defer resp.Body.Close()
-
 		if resp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+			resp.Body.Close()
 			return "", fmt.Errorf("LLM returned status %d: %s", resp.StatusCode, string(respBody))
 		}
 
 		ct := resp.Header.Get("Content-Type")
 		if !strings.HasPrefix(ct, "application/json") {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+			resp.Body.Close()
 			return "", fmt.Errorf("unexpected content type %q: %s", ct, string(respBody))
 		}
 
 		var result response
 		limited := io.LimitReader(resp.Body, maxResponseBody)
 		if err := json.NewDecoder(limited).Decode(&result); err != nil {
+			resp.Body.Close()
 			return "", fmt.Errorf("decoding response: %w", err)
 		}
 
 		if len(result.Choices) == 0 {
+			resp.Body.Close()
 			return "", fmt.Errorf("LLM returned no choices")
 		}
 
+		resp.Body.Close()
 		return result.Choices[0].Message.Content, nil
 	}
 
