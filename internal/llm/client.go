@@ -132,6 +132,9 @@ func envTemperature() (float64, string) {
 	if t := os.Getenv("AICOMMIT_TEMPERATURE"); t != "" {
 		var val float64
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
+			if val < 0 {
+				return defaultTemperature, fmt.Sprintf("warning: AICOMMIT_TEMPERATURE=%f is negative, using default %f", val, defaultTemperature)
+			}
 			return val, ""
 		}
 		return defaultTemperature, fmt.Sprintf("warning: AICOMMIT_TEMPERATURE=%q is not a valid float, using default %f", t, defaultTemperature)
@@ -147,6 +150,9 @@ func envRetryTemperature() (float64, string) {
 	if t := os.Getenv("AICOMMIT_RETRY_TEMPERATURE"); t != "" {
 		var val float64
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
+			if val < 0 {
+				return defaultRetryTemperature, fmt.Sprintf("warning: AICOMMIT_RETRY_TEMPERATURE=%f is negative, using default %f", val, defaultRetryTemperature)
+			}
 			return val, ""
 		}
 		return defaultRetryTemperature, fmt.Sprintf("warning: AICOMMIT_RETRY_TEMPERATURE=%q is not a valid float, using default %f", t, defaultRetryTemperature)

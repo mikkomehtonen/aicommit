@@ -399,6 +399,34 @@ func TestGenerateWithTemperature_timeoutCancelsRequest(t *testing.T) {
 	}
 }
 
+func TestEnvTemperature_negativeValue(t *testing.T) {
+	t.Setenv("AICOMMIT_TEMPERATURE", "-0.5")
+	got, warn := envTemperature()
+	if got != defaultTemperature {
+		t.Errorf("envTemperature() = %f, want default %f", got, defaultTemperature)
+	}
+	if warn == "" {
+		t.Error("expected warning for negative temperature")
+	}
+	if !strings.Contains(warn, "negative") {
+		t.Errorf("warning should mention negative, got %q", warn)
+	}
+}
+
+func TestEnvRetryTemperature_negativeValue(t *testing.T) {
+	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "-0.5")
+	got, warn := envRetryTemperature()
+	if got != defaultRetryTemperature {
+		t.Errorf("envRetryTemperature() = %f, want default %f", got, defaultRetryTemperature)
+	}
+	if warn == "" {
+		t.Error("expected warning for negative retry temperature")
+	}
+	if !strings.Contains(warn, "negative") {
+		t.Errorf("warning should mention negative, got %q", warn)
+	}
+}
+
 func TestNewClient_timeoutFromEnv(t *testing.T) {
 	t.Setenv("AICOMMIT_TIMEOUT", "90s")
 	t.Setenv("AICOMMIT_URL", "http://localhost:9999/v1/chat/completions")

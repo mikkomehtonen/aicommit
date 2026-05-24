@@ -638,6 +638,14 @@ func TestResolveTemperature(t *testing.T) {
 	}
 }
 
+func TestResolveTemperature_negativeClamped(t *testing.T) {
+	// resolveTemperature clamps negative values to 0.
+	got := resolveTemperature(-0.5, true, 0.1)
+	if got != 0 {
+		t.Errorf("resolveTemperature(-0.5, true, 0.1) = %v, want 0", got)
+	}
+}
+
 func TestInterfaceCompliance(t *testing.T) {
 	var _ DiffProvider = (*git.Git)(nil)
 	var _ Committer = (*git.Git)(nil)
