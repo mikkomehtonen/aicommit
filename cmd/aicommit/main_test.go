@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"aicommit/internal/git"
 	"aicommit/internal/prompt"
 )
 
@@ -555,8 +556,8 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 }
 
 func TestInterfaceCompliance(t *testing.T) {
-	var _ DiffProvider = (*realGit)(nil)
-	var _ Committer = (*realGit)(nil)
+	var _ DiffProvider = (*git.Git)(nil)
+	var _ Committer = (*git.Git)(nil)
 	var _ MessageGenerator = (*llmClient)(nil)
 }
 

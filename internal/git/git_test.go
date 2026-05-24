@@ -1,7 +1,6 @@
 package git
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -10,19 +9,32 @@ import (
 	"testing"
 )
 
-func TestStagedDiff(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
+type fakeExecutor struct {
+	fn func(cmd *exec.Cmd) ([]byte, error)
+}
 
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
+func (f *fakeExecutor) CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
+	return f.fn(cmd)
+}
+
+type fakeExitError struct {
+	code int
+}
+
+func (e *fakeExitError) Error() string   { return fmt.Sprintf("exit status %d", e.code) }
+func (e *fakeExitError) ExitCode() int   { return e.code }
+
+func TestStagedDiff(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
 		wantArgs := []string{"git", "diff", "--staged"}
 		if !reflect.DeepEqual(cmd.Args, wantArgs) {
 			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
 		}
 		return []byte("staged diff output"), nil
-	}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	out, err := StagedDiff()
+	out, err := g.StagedDiff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,18 +44,16 @@ func TestStagedDiff(t *testing.T) {
 }
 
 func TestAllDiff(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
-
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
 		wantArgs := []string{"git", "diff", "HEAD"}
 		if !reflect.DeepEqual(cmd.Args, wantArgs) {
 			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
 		}
 		return []byte("all diff output"), nil
-	}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	out, err := AllDiff()
+	out, err := g.AllDiff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,14 +63,12 @@ func TestAllDiff(t *testing.T) {
 }
 
 func TestAllDiff_noHEAD(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
-		return nil, exitError(128)
-	}
-
-	out, err := AllDiff()
+	out, err := g.AllDiff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,15 +77,28 @@ func TestAllDiff_noHEAD(t *testing.T) {
 	}
 }
 
-func TestStagedDiff_error(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
+func TestAllDiff_exitCode128_otherError(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: not a git repository"), &fakeExitError{code: 128}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
-		return []byte("fatal: not a git repository"), fmt.Errorf("exit status 128")
+	_, err := g.AllDiff()
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
+	if !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("error = %v, want error containing stderr text", err)
+	}
+}
 
-	_, err := StagedDiff()
+func TestStagedDiff_error(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: not a git repository"), fmt.Errorf("exit status 128")
+	}}
+	g := &Git{Exec: fakeExec}
+
+	_, err := g.StagedDiff()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -87,10 +108,7 @@ func TestStagedDiff_error(t *testing.T) {
 }
 
 func TestCommit(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
-
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
 		wantArgs := []string{"git", "commit", "-F", "-"}
 		if !reflect.DeepEqual(cmd.Args, wantArgs) {
 			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
@@ -104,23 +122,22 @@ func TestCommit(t *testing.T) {
 			return nil, fmt.Errorf("expected stdin to be set")
 		}
 		return []byte("[main 1234567] feat: add login"), nil
-	}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	err := Commit("feat: add login\n\nAdds OAuth2 flow with PKCE.")
+	err := g.Commit("feat: add login\n\nAdds OAuth2 flow with PKCE.")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestCommit_error(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
-
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
 		return []byte("error: pathspec 'foo' did not match any file(s) known to git"), fmt.Errorf("exit status 1")
-	}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	err := Commit("feat: something")
+	err := g.Commit("feat: something")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -130,17 +147,15 @@ func TestCommit_error(t *testing.T) {
 }
 
 func TestCommitAll(t *testing.T) {
-	oldExecRun := execRun
-	defer func() { execRun = oldExecRun }()
-
-	execRun = func(cmd *exec.Cmd) ([]byte, error) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
 		if !contains(cmd.Args, "-a") {
 			return nil, fmt.Errorf("expected -a flag in args, got %v", cmd.Args)
 		}
 		return []byte("[main 1234567] feat: changes"), nil
-	}
+	}}
+	g := &Git{Exec: fakeExec}
 
-	err := CommitAll("feat: changes")
+	err := g.CommitAll("feat: changes")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -153,16 +168,4 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
-}
-
-// exitError returns an *exec.ExitError with the given exit code by running
-// a real shell command that exits with that code.
-func exitError(code int) error {
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("exit %d", code))
-	err := cmd.Run()
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr
-	}
-	return fmt.Errorf("failed to create exit error %d: %w", code, err)
 }

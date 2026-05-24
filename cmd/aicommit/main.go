@@ -37,14 +37,6 @@ type MessageGeneratorWithTemperature interface {
 	GenerateWithTemperature(prompt string, temperature float64) (string, error)
 }
 
-// realGit wraps the internal/git package to satisfy DiffProvider and Committer.
-type realGit struct{}
-
-func (realGit) StagedDiff() (string, error) { return git.StagedDiff() }
-func (realGit) AllDiff() (string, error)    { return git.AllDiff() }
-func (realGit) Commit(msg string) error      { return git.Commit(msg) }
-func (realGit) CommitAll(msg string) error    { return git.CommitAll(msg) }
-
 // RunConfig holds the dependencies and settings for run.
 type RunConfig struct {
 	DiffProvider     DiffProvider
@@ -82,9 +74,9 @@ func main() {
 				retryTemp = client.RetryTemperature
 			}
 			err := run(RunConfig{
-				DiffProvider:     realGit{},
+				DiffProvider:     git.New(),
 				Generator:        client,
-				Committer:        realGit{},
+				Committer:        git.New(),
 				Stdin:            os.Stdin,
 				Stdout:           os.Stdout,
 				Stderr:           os.Stderr,
