@@ -564,6 +564,57 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	}
 }
 
+type fakeGeneratorNoTemp struct {
+	msgs    []string
+	index   int
+	errs    []error
+	errIdx  int
+	prompts []string
+}
+
+func (f *fakeGeneratorNoTemp) Generate(ctx context.Context, prompt string) (string, error) {
+	f.prompts = append(f.prompts, prompt)
+	if f.errIdx < len(f.errs) {
+		err := f.errs[f.errIdx]
+		f.errIdx++
+		return "", err
+	}
+	if f.index < len(f.msgs) {
+		msg := f.msgs[f.index]
+		f.index++
+		return msg, nil
+	}
+	return "", fmt.Errorf("no more fake responses")
+}
+
+func TestGenerateWithFallback_withTemperature(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: with temp"}}
+	got, err := generateWithFallback(context.Background(), mg, "test prompt", 0.7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "feat: with temp" {
+		t.Errorf("got %q, want %q", got, "feat: with temp")
+	}
+	if len(mg.prompts) != 1 {
+		t.Errorf("expected 1 call, got %d", len(mg.prompts))
+	}
+}
+
+func TestGenerateWithFallback_fallbackToGenerate(t *testing.T) {
+	mg := &fakeGeneratorNoTemp{msgs: []string{"feat: fallback"}}
+	got, err := generateWithFallback(context.Background(), mg, "test prompt", 0.7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "feat: fallback" {
+		t.Errorf("got %q, want %q", got, "feat: fallback")
+	}
+	if len(mg.prompts) != 1 {
+		t.Errorf("expected 1 call, got %d", len(mg.prompts))
+	}
+}
+
 func TestResolveTemperature(t *testing.T) {
 	tests := []struct {
 		name     string
