@@ -5,6 +5,7 @@ import (
 	"io"
 	"os/exec"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -148,7 +149,7 @@ func TestCommit_error(t *testing.T) {
 
 func TestCommitAll(t *testing.T) {
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
-		if !contains(cmd.Args, "-a") {
+		if !slices.Contains(cmd.Args, "-a") {
 			return nil, fmt.Errorf("expected -a flag in args, got %v", cmd.Args)
 		}
 		return []byte("[main 1234567] feat: changes"), nil
@@ -159,13 +160,4 @@ func TestCommitAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

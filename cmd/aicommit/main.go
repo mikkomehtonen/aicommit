@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -71,10 +72,11 @@ func main() {
 			}
 			temp := resolveTemperature(temperatureFlag, cmd.Flags().Changed("temperature"), client.Temperature)
 			retryTemp := resolveTemperature(retryTemperatureFlag, cmd.Flags().Changed("retry-temperature"), client.RetryTemperature)
+			g := git.New()
 			err := run(cmd.Context(), RunConfig{
-				DiffProvider:     git.New(),
+				DiffProvider:     g,
 				Generator:        client,
-				Committer:        git.New(),
+				Committer:        g,
 				Stdin:            os.Stdin,
 				Stdout:           os.Stdout,
 				Stderr:           os.Stderr,
@@ -142,7 +144,7 @@ func diffForMode(dp DiffProvider, all bool) (string, error) {
 	return diff, nil
 }
 
-var errEmptyDiff = fmt.Errorf("empty diff")
+var errEmptyDiff = errors.New("empty diff")
 
 // resolveTemperature returns the flag value if it was explicitly set, otherwise the default.
 func resolveTemperature(flag float64, changed bool, defaultVal float64) float64 {

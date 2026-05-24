@@ -282,6 +282,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 func makeIC(mg *fakeGenerator, c *fakeCommitter, stdin string, all bool) RunConfig {
 	var stdout, stderr bytes.Buffer
 	return RunConfig{
+		DiffProvider:     &fakeDiffProvider{diff: "test diff"},
 		Generator:        mg,
 		Committer:        c,
 		Stdin:            strings.NewReader(stdin),
