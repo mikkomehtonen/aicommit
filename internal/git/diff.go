@@ -7,12 +7,17 @@ import (
 	"strings"
 )
 
-// Executor runs an exec.Cmd and returns combined output.
+// Executor runs an exec.Cmd and returns output.
 type Executor interface {
+	Output(cmd *exec.Cmd) ([]byte, error)
 	CombinedOutput(cmd *exec.Cmd) ([]byte, error)
 }
 
 type defaultExecutor struct{}
+
+func (defaultExecutor) Output(cmd *exec.Cmd) ([]byte, error) {
+	return cmd.Output()
+}
 
 func (defaultExecutor) CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return cmd.CombinedOutput()
@@ -31,9 +36,9 @@ func New() *Git {
 // StagedDiff returns the output of `git diff --staged`.
 func (g *Git) StagedDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "--staged")
-	out, err := g.Exec.CombinedOutput(cmd)
+	out, err := g.Exec.Output(cmd)
 	if err != nil {
-		return "", fmt.Errorf("running git diff --staged: %w: %s", err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("running git diff --staged: %w", err)
 	}
 	return string(out), nil
 }

@@ -21,6 +21,12 @@ Or build directly:
 go build -o aicommit ./cmd/aicommit
 ```
 
+To set a custom version number (shown with `--version`):
+
+```bash
+go build -ldflags "-X aicommit/cmd/aicommit.version=1.0.0" -o aicommit ./cmd/aicommit
+```
+
 ## Usage
 
 1. Stage your changes:

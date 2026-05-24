@@ -14,6 +14,10 @@ type fakeExecutor struct {
 	fn func(cmd *exec.Cmd) ([]byte, error)
 }
 
+func (f *fakeExecutor) Output(cmd *exec.Cmd) ([]byte, error) {
+	return f.fn(cmd)
+}
+
 func (f *fakeExecutor) CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return f.fn(cmd)
 }
@@ -95,7 +99,7 @@ func TestAllDiff_exitCode128_otherError(t *testing.T) {
 
 func TestStagedDiff_error(t *testing.T) {
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
-		return []byte("fatal: not a git repository"), fmt.Errorf("exit status 128")
+		return nil, fmt.Errorf("exit status 128")
 	}}
 	g := &Git{Exec: fakeExec}
 
@@ -103,8 +107,8 @@ func TestStagedDiff_error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "fatal: not a git repository") {
-		t.Errorf("error = %v, want error containing stderr text", err)
+	if !strings.Contains(err.Error(), "running git diff --staged") {
+		t.Errorf("error = %v, want error containing command text", err)
 	}
 }
 

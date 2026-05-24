@@ -53,6 +53,8 @@ type RunConfig struct {
 	CommitFlag       bool
 }
 
+var version = "dev"
+
 func main() {
 	var (
 		commitFlag       bool
@@ -62,9 +64,10 @@ func main() {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "aicommit",
-		Short: "Generate Conventional Commit messages using a local LLM",
-		Long:  "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
+		Use:     "aicommit",
+		Short:   "Generate Conventional Commit messages using a local LLM",
+		Long:    "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
+		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, warnings := llm.NewClient()
 			for _, w := range warnings {
@@ -169,6 +172,9 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool
 	isRetry := false
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		var promptText string
 		if isRetry {
 			promptText = prompt.BuildRetry(diff, previousSuggestions)
@@ -188,6 +194,9 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool
 		// Confirmation loop: allows editing without regenerating.
 	confirmLoop:
 		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			fmt.Fprintln(cfg.Stdout, msg)
 			fmt.Fprint(cfg.Stdout, "[a]ccept, [e]dit, [r]etry, [c]ancel: ")
 
