@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -28,13 +29,13 @@ type Committer interface {
 
 // MessageGenerator sends a prompt to the LLM and returns the response.
 type MessageGenerator interface {
-	Generate(prompt string) (string, error)
+	Generate(ctx context.Context, prompt string) (string, error)
 }
 
 // MessageGeneratorWithTemperature sends a prompt to the LLM with a given
 // temperature and returns the response.
 type MessageGeneratorWithTemperature interface {
-	GenerateWithTemperature(prompt string, temperature float64) (string, error)
+	GenerateWithTemperature(ctx context.Context, prompt string, temperature float64) (string, error)
 }
 
 // RunConfig holds the dependencies and settings for run.
@@ -64,7 +65,10 @@ func main() {
 		Short: "Generate Conventional Commit messages using a local LLM",
 		Long:  "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := llm.NewClient()
+			client, warnings := llm.NewClient()
+			for _, w := range warnings {
+				fmt.Fprintln(os.Stderr, w)
+			}
 			temp := temperatureFlag
 			retryTemp := retryTemperatureFlag
 			if !cmd.Flags().Changed("temperature") {
@@ -73,7 +77,7 @@ func main() {
 			if !cmd.Flags().Changed("retry-temperature") {
 				retryTemp = client.RetryTemperature
 			}
-			err := run(RunConfig{
+			err := run(cmd.Context(), RunConfig{
 				DiffProvider:     git.New(),
 				Generator:        client,
 				Committer:        git.New(),
@@ -102,7 +106,7 @@ func main() {
 	}
 }
 
-func run(cfg RunConfig) error {
+func run(ctx context.Context, cfg RunConfig) error {
 	diff, err := diffForMode(cfg.DiffProvider, cfg.AllFlag)
 	if err != nil {
 		return err
@@ -118,7 +122,7 @@ func run(cfg RunConfig) error {
 	}
 
 	if !cfg.CommitFlag {
-		msg, err := generateWithFallback(cfg.Generator, prompt.Build(diff), cfg.Temperature)
+		msg, err := generateWithFallback(ctx, cfg.Generator, prompt.Build(diff), cfg.Temperature)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
@@ -126,7 +130,7 @@ func run(cfg RunConfig) error {
 		return nil
 	}
 
-	return interactiveCommit(cfg, diff, cfg.AllFlag)
+	return interactiveCommit(ctx, cfg, diff, cfg.AllFlag)
 }
 
 func diffForMode(dp DiffProvider, all bool) (string, error) {
@@ -148,14 +152,14 @@ var errEmptyDiff = fmt.Errorf("empty diff")
 
 // generateWithFallback tries GenerateWithTemperature first, falling back to
 // Generate if the generator does not support temperature.
-func generateWithFallback(mg MessageGenerator, prompt string, temperature float64) (string, error) {
+func generateWithFallback(ctx context.Context, mg MessageGenerator, prompt string, temperature float64) (string, error) {
 	if withTemp, ok := mg.(MessageGeneratorWithTemperature); ok {
-		return withTemp.GenerateWithTemperature(prompt, temperature)
+		return withTemp.GenerateWithTemperature(ctx, prompt, temperature)
 	}
-	return mg.Generate(prompt)
+	return mg.Generate(ctx, prompt)
 }
 
-func interactiveCommit(cfg RunConfig, diff string, all bool) error {
+func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool) error {
 	scanner := bufio.NewScanner(cfg.Stdin)
 	var previousSuggestions []string
 	isRetry := false
@@ -171,7 +175,7 @@ func interactiveCommit(cfg RunConfig, diff string, all bool) error {
 		if isRetry {
 			genTemp = cfg.RetryTemperature
 		}
-		msg, err := generateWithFallback(cfg.Generator, promptText, genTemp)
+		msg, err := generateWithFallback(ctx, cfg.Generator, promptText, genTemp)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}

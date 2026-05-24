@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -55,7 +56,7 @@ type fakeGenerator struct {
 	prompts []string
 }
 
-func (f *fakeGenerator) Generate(prompt string) (string, error) {
+func (f *fakeGenerator) Generate(ctx context.Context, prompt string) (string, error) {
 	f.prompts = append(f.prompts, prompt)
 	if f.err != nil {
 		err := f.err
@@ -70,6 +71,10 @@ func (f *fakeGenerator) Generate(prompt string) (string, error) {
 	return "", fmt.Errorf("no more fake responses")
 }
 
+func (f *fakeGenerator) GenerateWithTemperature(ctx context.Context, prompt string, temperature float64) (string, error) {
+	return f.Generate(ctx, prompt)
+}
+
 // --- Tests ---
 
 func TestRun_emptyDiff(t *testing.T) {
@@ -77,7 +82,7 @@ func TestRun_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -107,7 +112,7 @@ func TestRun_whitespaceOnlyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -128,7 +133,7 @@ func TestRun_printMode(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: add something"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -154,7 +159,7 @@ func TestRun_generateError(t *testing.T) {
 	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -178,7 +183,7 @@ func TestRun_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -202,7 +207,7 @@ func TestRun_allFlag_usesAllDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: all changes"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -227,7 +232,7 @@ func TestRun_allFlag_emptyDiff(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"should not be called"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -252,7 +257,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"irrelevant"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -290,7 +295,7 @@ func TestInteractiveCommit_accept(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -308,7 +313,7 @@ func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -323,7 +328,7 @@ func TestInteractiveCommit_retry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -341,7 +346,7 @@ func TestInteractiveCommit_cancel(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "c\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -359,7 +364,7 @@ func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -380,7 +385,7 @@ func TestInteractiveCommit_commitError(t *testing.T) {
 	c := &fakeCommitter{err: fmt.Errorf("git commit failed")}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -395,7 +400,7 @@ func TestInteractiveCommit_generateError(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -410,7 +415,7 @@ func TestInteractiveCommit_unknownChoice(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "x\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -428,7 +433,7 @@ func TestInteractiveCommit_eof(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -443,7 +448,7 @@ func TestInteractiveCommit_editThenAccept(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited message\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -461,7 +466,7 @@ func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -479,7 +484,7 @@ func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n   \na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -494,7 +499,7 @@ func TestInteractiveCommit_editThenCancel(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited\nc\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -512,7 +517,7 @@ func TestInteractiveCommit_editThenRetry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited\nr\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -530,7 +535,7 @@ func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n  feat: trimmed  \na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -545,7 +550,7 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: first edit\ne\nfeat: final edit\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -563,14 +568,14 @@ func TestInterfaceCompliance(t *testing.T) {
 
 type llmClient struct{}
 
-func (llmClient) Generate(prompt string) (string, error) { return "", nil }
+func (llmClient) Generate(ctx context.Context, prompt string) (string, error) { return "", nil }
 
 func TestRun_acceptsIOInterfaces(t *testing.T) {
 	dp := &fakeDiffProvider{diff: "diff", err: nil}
 	mg := &fakeGenerator{msgs: []string{"feat: test"}}
 	var stdout, stderr bytes.Buffer
 
-	err := run(RunConfig{
+	err := run(context.Background(), RunConfig{
 		DiffProvider:     dp,
 		Generator:        mg,
 		Committer:        &fakeCommitter{},
@@ -590,7 +595,7 @@ func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit(cfg, "some diff", true)
+	err := interactiveCommit(context.Background(), cfg, "some diff", true)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -611,7 +616,7 @@ func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 	c := &fakeCommitter{err: fmt.Errorf("git commit -a failed")}
 	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit(cfg, "some diff", true)
+	err := interactiveCommit(context.Background(), cfg, "some diff", true)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -626,7 +631,7 @@ func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -644,7 +649,7 @@ func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -672,7 +677,7 @@ func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\nr\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -712,7 +717,7 @@ func TestInteractiveCommit_retryCapsAt5(t *testing.T) {
 	// 8 retries then accept
 	cfg := makeIC(mg, c, "r\nr\nr\nr\nr\nr\nr\nr\na\n", false)
 
-	err := interactiveCommit(cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

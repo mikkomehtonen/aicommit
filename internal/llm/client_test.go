@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,7 @@ func TestGenerate_success(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	got, err := client.Generate("some prompt")
+	got, err := client.Generate(context.Background(), "some prompt")
 	if err != nil {
 		t.Fatalf("Generate() error: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestGenerate_customModel(t *testing.T) {
 		Model:      "my-custom-model",
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err != nil {
 		t.Fatalf("Generate() error: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestGenerate_emptyChoices(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err == nil {
 		t.Fatal("expected error for empty choices, got nil")
 	}
@@ -117,7 +118,7 @@ func TestGenerate_serverError(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err == nil {
 		t.Fatal("expected error for 500 response, got nil")
 	}
@@ -134,7 +135,7 @@ func TestGenerate_connectionRefused(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err == nil {
 		t.Fatal("expected error for connection refused, got nil")
 	}
@@ -160,7 +161,7 @@ func TestGenerate_trimsWhitespaceInResponse(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	got, err := client.Generate("prompt")
+	got, err := client.Generate(context.Background(), "prompt")
 	if err != nil {
 		t.Fatalf("Generate() error: %v", err)
 	}
@@ -191,7 +192,7 @@ func TestGenerateWithTemperature_sendsTemperature(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	_, err := client.GenerateWithTemperature("prompt", 0.7)
+	_, err := client.GenerateWithTemperature(context.Background(), "prompt", 0.7)
 	if err != nil {
 		t.Fatalf("GenerateWithTemperature() error: %v", err)
 	}
@@ -224,7 +225,7 @@ func TestGenerateWithTemperature_defaultTemperature(t *testing.T) {
 		RetryTemperature: 0.8,
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err != nil {
 		t.Fatalf("Generate() error: %v", err)
 	}
@@ -235,43 +236,67 @@ func TestGenerateWithTemperature_defaultTemperature(t *testing.T) {
 
 func TestEnvTemperature(t *testing.T) {
 	t.Setenv("AICOMMIT_TEMPERATURE", "0.6")
-	if got := envTemperature(); got != 0.6 {
+	got, warn := envTemperature()
+	if got != 0.6 {
 		t.Errorf("envTemperature() = %f, want 0.6", got)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
 	}
 }
 
 func TestEnvTemperature_invalidValue(t *testing.T) {
 	t.Setenv("AICOMMIT_TEMPERATURE", "not-a-number")
-	if got := envTemperature(); got != defaultTemperature {
+	got, warn := envTemperature()
+	if got != defaultTemperature {
 		t.Errorf("envTemperature() = %f, want default %f", got, defaultTemperature)
+	}
+	if warn == "" {
+		t.Error("expected warning for invalid temperature")
 	}
 }
 
 func TestEnvTemperature_emptyValue(t *testing.T) {
 	t.Setenv("AICOMMIT_TEMPERATURE", "")
-	if got := envTemperature(); got != defaultTemperature {
+	got, warn := envTemperature()
+	if got != defaultTemperature {
 		t.Errorf("envTemperature() = %f, want default %f", got, defaultTemperature)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
 	}
 }
 
 func TestEnvRetryTemperature(t *testing.T) {
 	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "0.9")
-	if got := envRetryTemperature(); got != 0.9 {
+	got, warn := envRetryTemperature()
+	if got != 0.9 {
 		t.Errorf("envRetryTemperature() = %f, want 0.9", got)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
 	}
 }
 
 func TestEnvRetryTemperature_invalidValue(t *testing.T) {
 	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "invalid")
-	if got := envRetryTemperature(); got != defaultRetryTemperature {
+	got, warn := envRetryTemperature()
+	if got != defaultRetryTemperature {
 		t.Errorf("envRetryTemperature() = %f, want default %f", got, defaultRetryTemperature)
+	}
+	if warn == "" {
+		t.Error("expected warning for invalid retry temperature")
 	}
 }
 
 func TestEnvRetryTemperature_emptyValue(t *testing.T) {
 	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "")
-	if got := envRetryTemperature(); got != defaultRetryTemperature {
+	got, warn := envRetryTemperature()
+	if got != defaultRetryTemperature {
 		t.Errorf("envRetryTemperature() = %f, want default %f", got, defaultRetryTemperature)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
 	}
 }
 
@@ -289,7 +314,7 @@ func TestGenerate_nonJSONResponse(t *testing.T) {
 		Model:      "test-model",
 	}
 
-	_, err := client.Generate("prompt")
+	_, err := client.Generate(context.Background(), "prompt")
 	if err == nil {
 		t.Fatal("expected error for non-JSON response, got nil")
 	}

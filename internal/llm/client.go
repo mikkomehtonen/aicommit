@@ -2,9 +2,11 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -17,14 +19,16 @@ const (
 	defaultTemperature      = 0.1
 	defaultRetryTemperature = 0.4
 	defaultTimeout          = 60 * time.Second
+	maxResponseBody         = 1 << 20 // 1 MB
+	maxRetries              = 3
 )
 
 // request is the payload sent to the OpenAI-compatible chat completions endpoint.
 type request struct {
-	Model     string    `json:"model"`
-	Messages  []message `json:"messages"`
-	Stream    bool      `json:"stream"`
-	Temperature *float64 `json:"temperature,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []message `json:"messages"`
+	Stream      bool      `json:"stream"`
+	Temperature *float64  `json:"temperature,omitempty"`
 }
 
 type message struct {
@@ -43,10 +47,10 @@ type choice struct {
 
 // Client sends prompts to an OpenAI-compatible chat completions endpoint.
 type Client struct {
-	HTTPClient    *http.Client
-	URL           string
-	Model         string
-	Temperature   float64
+	HTTPClient       *http.Client
+	URL              string
+	Model            string
+	Temperature      float64
 	RetryTemperature float64
 }
 
@@ -55,14 +59,26 @@ type Client struct {
 // is read from the AICOMMIT_MODEL environment variable, falling back to defaultModel.
 // Temperature is read from AICOMMIT_TEMPERATURE (first request) and
 // AICOMMIT_RETRY_TEMPERATURE (retry requests), falling back to their defaults.
-func NewClient() *Client {
-	return &Client{
-		HTTPClient:     &http.Client{Timeout: defaultTimeout},
-		URL:            envURL(),
-		Model:          envModel(),
-		Temperature:    envTemperature(),
-		RetryTemperature: envRetryTemperature(),
+// The second return value is a slice of warning messages (empty if all env vars are valid).
+func NewClient() (*Client, []string) {
+	var warnings []string
+
+	temp, tempWarn := envTemperature()
+	if tempWarn != "" {
+		warnings = append(warnings, tempWarn)
 	}
+	retryTemp, retryTempWarn := envRetryTemperature()
+	if retryTempWarn != "" {
+		warnings = append(warnings, retryTempWarn)
+	}
+
+	return &Client{
+		HTTPClient:       &http.Client{Timeout: defaultTimeout},
+		URL:              envURL(),
+		Model:            envModel(),
+		Temperature:      temp,
+		RetryTemperature: retryTemp,
+	}, warnings
 }
 
 // envURL returns the backend URL from the AICOMMIT_URL environment variable,
@@ -85,80 +101,119 @@ func envModel() string {
 
 // envTemperature returns the temperature from the AICOMMIT_TEMPERATURE
 // environment variable, falling back to the default if not set.
-func envTemperature() float64 {
+// Returns (value, warning) where warning is non-empty if the env var was invalid.
+func envTemperature() (float64, string) {
 	if t := os.Getenv("AICOMMIT_TEMPERATURE"); t != "" {
 		var val float64
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
-			return val
+			return val, ""
 		}
-		fmt.Fprintf(os.Stderr, "warning: AICOMMIT_TEMPERATURE=%q is not a valid float, using default %f\n", t, defaultTemperature)
+		return defaultTemperature, fmt.Sprintf("warning: AICOMMIT_TEMPERATURE=%q is not a valid float, using default %f", t, defaultTemperature)
 	}
-	return defaultTemperature
+	return defaultTemperature, ""
 }
 
 // envRetryTemperature returns the retry temperature from the
 // AICOMMIT_RETRY_TEMPERATURE environment variable, falling back to the
 // default if not set.
-func envRetryTemperature() float64 {
+// Returns (value, warning) where warning is non-empty if the env var was invalid.
+func envRetryTemperature() (float64, string) {
 	if t := os.Getenv("AICOMMIT_RETRY_TEMPERATURE"); t != "" {
 		var val float64
 		if _, err := fmt.Sscanf(t, "%f", &val); err == nil {
-			return val
+			return val, ""
 		}
-		fmt.Fprintf(os.Stderr, "warning: AICOMMIT_RETRY_TEMPERATURE=%q is not a valid float, using default %f\n", t, defaultRetryTemperature)
+		return defaultRetryTemperature, fmt.Sprintf("warning: AICOMMIT_RETRY_TEMPERATURE=%q is not a valid float, using default %f", t, defaultRetryTemperature)
 	}
-	return defaultRetryTemperature
+	return defaultRetryTemperature, ""
 }
 
 // Generate sends a prompt to the LLM API and returns the generated text.
-func (c *Client) Generate(prompt string) (string, error) {
-	return c.GenerateWithTemperature(prompt, c.Temperature)
+func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
+	return c.GenerateWithTemperature(ctx, prompt, c.Temperature)
 }
 
 // GenerateWithTemperature sends a prompt to the LLM API with the given
 // temperature and returns the generated text.
-func (c *Client) GenerateWithTemperature(prompt string, temperature float64) (string, error) {
+func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, temperature float64) (string, error) {
 	body, err := json.Marshal(request{
-		Model:     c.Model,
-		Messages:  []message{{Role: "user", Content: prompt}},
-		Stream:    false,
+		Model:       c.Model,
+		Messages:    []message{{Role: "user", Content: prompt}},
+		Stream:      false,
 		Temperature: &temperature,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshaling request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.URL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("sending request to LLM: %w", err)
-	}
-	defer resp.Body.Close()
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("LLM returned status %d: %s", resp.StatusCode, string(respBody))
+		req, err := http.NewRequestWithContext(ctx, "POST", c.URL, bytes.NewReader(body))
+		if err != nil {
+			return "", fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			if isRetryableError(err) && attempt < maxRetries-1 {
+				lastErr = err
+				continue
+			}
+			return "", fmt.Errorf("sending request to LLM: %w", err)
+		}
+
+		if isRetryableStatusCode(resp.StatusCode) && attempt < maxRetries-1 {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("LLM returned status %d", resp.StatusCode)
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+			return "", fmt.Errorf("LLM returned status %d: %s", resp.StatusCode, string(respBody))
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "application/json") {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+			return "", fmt.Errorf("unexpected content type %q: %s", ct, string(respBody))
+		}
+
+		var result response
+		limited := io.LimitReader(resp.Body, maxResponseBody)
+		if err := json.NewDecoder(limited).Decode(&result); err != nil {
+			return "", fmt.Errorf("decoding response: %w", err)
+		}
+
+		if len(result.Choices) == 0 {
+			return "", fmt.Errorf("LLM returned no choices")
+		}
+
+		return result.Choices[0].Message.Content, nil
 	}
 
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected content type %q: %s", ct, string(respBody))
-	}
+	return "", fmt.Errorf("sending request to LLM after %d attempts: %w", maxRetries, lastErr)
+}
 
-	var result response
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decoding response: %w", err)
+func isRetryableError(err error) bool {
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout()
 	}
-
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("LLM returned no choices")
+	if urlErr, ok := err.(*net.OpError); ok {
+		return urlErr.Temporary()
 	}
+	return false
+}
 
-	return result.Choices[0].Message.Content, nil
+func isRetryableStatusCode(code int) bool {
+	return code == http.StatusBadGateway || code == http.StatusServiceUnavailable || code == http.StatusGatewayTimeout
 }
