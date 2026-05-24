@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"aicommit/internal/git"
 	"aicommit/internal/llm"
@@ -57,22 +58,30 @@ var version = "dev"
 
 func main() {
 	var (
-		commitFlag       bool
-		allFlag          bool
-		temperatureFlag  float64
+		commitFlag           bool
+		allFlag              bool
+		temperatureFlag      float64
 		retryTemperatureFlag float64
+		timeoutFlag          string
 	)
 
 	rootCmd := &cobra.Command{
 		Use:     "aicommit",
 		Short:   "Generate Conventional Commit messages using a local LLM",
-		Long:    "aicommit reads your staged git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
+		Long:    "aicommit reads your staged git diff, sends it to an OpenAI-compatible LLM API, and prints a Conventional Commit message to stdout.\n\nUse --all to include all changes (staged + unstaged) instead of only staged changes.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, warnings := llm.NewClient()
 			for _, w := range warnings {
 				fmt.Fprintln(os.Stderr, w)
 			}
+if cmd.Flags().Changed("timeout") {
+			d, err := time.ParseDuration(timeoutFlag)
+			if err != nil {
+				return fmt.Errorf("invalid --timeout duration %q: %w", timeoutFlag, err)
+			}
+			client.Timeout = d
+		}
 			temp := resolveTemperature(temperatureFlag, cmd.Flags().Changed("temperature"), client.Temperature)
 			retryTemp := resolveTemperature(retryTemperatureFlag, cmd.Flags().Changed("retry-temperature"), client.RetryTemperature)
 			g := git.New()
@@ -99,6 +108,7 @@ func main() {
 	rootCmd.Flags().BoolVarP(&allFlag, "all", "a", false, "include all changes (staged + unstaged) via git diff HEAD")
 	rootCmd.Flags().Float64Var(&temperatureFlag, "temperature", 0, "temperature for the first request (default: AICOMMIT_TEMPERATURE env var, or 0.1)")
 	rootCmd.Flags().Float64Var(&retryTemperatureFlag, "retry-temperature", 0, "temperature for retry requests (default: AICOMMIT_RETRY_TEMPERATURE env var, or 0.4)")
+	rootCmd.Flags().StringVar(&timeoutFlag, "timeout", "", "HTTP timeout as a Go duration string, e.g. \"60s\" or \"2m\" (default: AICOMMIT_TIMEOUT env var, or 60s)")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

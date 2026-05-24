@@ -47,6 +47,7 @@ Flow: `git diff` → `prompt.Build` → `llm.Generate` → stdout.
 - Endpoint default: `http://localhost:1234/v1/chat/completions`
 - URL override: set `AICOMMIT_URL` env var
 - Model override: set `AICOMMIT_MODEL` env var. Default: `qwen/qwen3.6-27b`
+- Timeout override: set `AICOMMIT_TIMEOUT` env var (Go duration string, e.g. `2m`). Default: `60s`. CLI flag: `--timeout`
 - Response is extracted from `choices[0].message.content`
 - Requires an OpenAI-compatible LLM API server running locally with a model loaded
 

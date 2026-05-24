@@ -103,6 +103,19 @@ AICOMMIT_TEMPERATURE=0.2 AICOMMIT_RETRY_TEMPERATURE=0.6 aicommit --commit
 aicommit --temperature 0.2 --retry-temperature 0.6 --commit
 ```
 
+### Timeout
+
+The default HTTP timeout is `60s`. Override it with a Go duration string (`30s`, `2m`, `1m30s`, etc.):
+
+| Default | Env Var | CLI Flag |
+|---------|---------|----------|
+| `60s` | `AICOMMIT_TIMEOUT` | `--timeout` |
+
+```bash
+AICOMMIT_TIMEOUT=2m aicommit --commit
+aicommit --timeout 120s --commit
+```
+
 ## Testing
 
 ```bash

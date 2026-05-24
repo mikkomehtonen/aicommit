@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGenerate_success(t *testing.T) {
@@ -320,5 +321,96 @@ func TestGenerate_nonJSONResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unexpected content type") {
 		t.Errorf("error = %q, wanted it to contain %q", err.Error(), "unexpected content type")
+	}
+}
+
+func TestEnvTimeout(t *testing.T) {
+	t.Setenv("AICOMMIT_TIMEOUT", "30s")
+	got, warn := envTimeout()
+	if got != 30*time.Second {
+		t.Errorf("envTimeout() = %v, want 30s", got)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
+	}
+}
+
+func TestEnvTimeout_minutes(t *testing.T) {
+	t.Setenv("AICOMMIT_TIMEOUT", "2m")
+	got, warn := envTimeout()
+	if got != 2*time.Minute {
+		t.Errorf("envTimeout() = %v, want 2m", got)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
+	}
+}
+
+func TestEnvTimeout_invalidValue(t *testing.T) {
+	t.Setenv("AICOMMIT_TIMEOUT", "not-a-duration")
+	got, warn := envTimeout()
+	if got != defaultTimeout {
+		t.Errorf("envTimeout() = %v, want default %v", got, defaultTimeout)
+	}
+	if warn == "" {
+		t.Error("expected warning for invalid timeout")
+	}
+}
+
+func TestEnvTimeout_emptyValue(t *testing.T) {
+	t.Setenv("AICOMMIT_TIMEOUT", "")
+	got, warn := envTimeout()
+	if got != defaultTimeout {
+		t.Errorf("envTimeout() = %v, want default %v", got, defaultTimeout)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning: %s", warn)
+	}
+}
+
+func TestGenerateWithTemperature_timeoutCancelsRequest(t *testing.T) {
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-done
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	defer close(done)
+
+	client := &Client{
+		HTTPClient: http.DefaultClient,
+		URL:        srv.URL,
+		Model:      "test-model",
+		Timeout:    50 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err := client.GenerateWithTemperature(ctx, "prompt", 0.5)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error due to timeout, got nil")
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("timeout took %v, should have been well under 500ms", elapsed)
+	}
+}
+
+func TestNewClient_timeoutFromEnv(t *testing.T) {
+	t.Setenv("AICOMMIT_TIMEOUT", "90s")
+	t.Setenv("AICOMMIT_URL", "http://localhost:9999/v1/chat/completions")
+	t.Setenv("AICOMMIT_MODEL", "test")
+	t.Setenv("AICOMMIT_TEMPERATURE", "0.5")
+	t.Setenv("AICOMMIT_RETRY_TEMPERATURE", "0.6")
+
+	client, warnings := NewClient()
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	if client.Timeout != 90*time.Second {
+		t.Errorf("Timeout = %v, want 90s", client.Timeout)
 	}
 }

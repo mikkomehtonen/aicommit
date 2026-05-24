@@ -55,6 +55,7 @@ type Client struct {
 	Model            string
 	Temperature      float64
 	RetryTemperature float64
+	Timeout          time.Duration
 }
 
 // NewClient returns a Client with defaults. The URL is read from the
@@ -62,10 +63,16 @@ type Client struct {
 // is read from the AICOMMIT_MODEL environment variable, falling back to defaultModel.
 // Temperature is read from AICOMMIT_TEMPERATURE (first request) and
 // AICOMMIT_RETRY_TEMPERATURE (retry requests), falling back to their defaults.
+// Timeout is read from AICOMMIT_TIMEOUT (as a Go duration string like "60s"),
+// falling back to defaultTimeout.
 // The second return value is a slice of warning messages (empty if all env vars are valid).
 func NewClient() (*Client, []string) {
 	var warnings []string
 
+	timeout, timeoutWarn := envTimeout()
+	if timeoutWarn != "" {
+		warnings = append(warnings, timeoutWarn)
+	}
 	temp, tempWarn := envTemperature()
 	if tempWarn != "" {
 		warnings = append(warnings, tempWarn)
@@ -76,12 +83,28 @@ func NewClient() (*Client, []string) {
 	}
 
 	return &Client{
-		HTTPClient:       &http.Client{Timeout: defaultTimeout},
+		HTTPClient:       &http.Client{},
 		URL:              envURL(),
 		Model:            envModel(),
 		Temperature:      temp,
 		RetryTemperature: retryTemp,
+		Timeout:          timeout,
 	}, warnings
+}
+
+// envTimeout returns the timeout from the AICOMMIT_TIMEOUT environment variable
+// (parsed as a Go duration string, e.g. "60s" or "2m"), falling back to the
+// default if not set.
+// Returns (value, warning) where warning is non-empty if the env var was invalid.
+func envTimeout() (time.Duration, string) {
+	if t := os.Getenv("AICOMMIT_TIMEOUT"); t != "" {
+		d, err := time.ParseDuration(t)
+		if err == nil {
+			return d, ""
+		}
+		return defaultTimeout, fmt.Sprintf("warning: AICOMMIT_TIMEOUT=%q is not a valid duration, using default %s", t, defaultTimeout)
+	}
+	return defaultTimeout, ""
 }
 
 // envURL returns the backend URL from the AICOMMIT_URL environment variable,
@@ -137,8 +160,15 @@ func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 }
 
 // GenerateWithTemperature sends a prompt to the LLM API with the given
-// temperature and returns the generated text.
+// temperature and returns the generated text. The client's Timeout is applied
+// as an overall deadline covering all retry attempts.
 func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, temperature float64) (string, error) {
+	if c.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
+		defer cancel()
+	}
+
 	body, err := json.Marshal(request{
 		Model:       c.Model,
 		Messages:    []message{{Role: "user", Content: prompt}},
@@ -151,13 +181,21 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("generating commit message: %w", err)
+		}
+
 		if attempt > 0 {
 			delay := time.Duration(math.Pow(2, float64(attempt))) * time.Second
 			if delay > 10*time.Second {
 				delay = 10 * time.Second
 			}
 			jitter := time.Duration(rand.Float64() * float64(delay) * 0.3)
-			time.Sleep(delay + jitter)
+			select {
+			case <-time.After(delay + jitter):
+			case <-ctx.Done():
+				return "", fmt.Errorf("generating commit message: %w", ctx.Err())
+			}
 		}
 
 		req, err := http.NewRequestWithContext(ctx, "POST", c.URL, bytes.NewReader(body))
