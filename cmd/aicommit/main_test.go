@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"aicommit/internal/git"
+	"aicommit/internal/llm"
 	"aicommit/internal/prompt"
 )
 
@@ -589,12 +590,9 @@ func TestResolveTemperature(t *testing.T) {
 func TestInterfaceCompliance(t *testing.T) {
 	var _ DiffProvider = (*git.Git)(nil)
 	var _ Committer = (*git.Git)(nil)
-	var _ MessageGenerator = (*llmClient)(nil)
+	var _ MessageGenerator = (*llm.Client)(nil)
+	var _ MessageGeneratorWithTemperature = (*llm.Client)(nil)
 }
-
-type llmClient struct{}
-
-func (llmClient) Generate(ctx context.Context, prompt string) (string, error) { return "", nil }
 
 func TestRun_acceptsIOInterfaces(t *testing.T) {
 	dp := &fakeDiffProvider{diff: "diff", err: nil}
