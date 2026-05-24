@@ -26,13 +26,14 @@ func (f *fakeDiffProvider) AllDiff() (string, error) { return f.diff, f.err }
 type fakeCommitter struct {
 	committed    []string
 	committedAll []string
-	err          error
+	errs         []error
+	errIndex     int
 }
 
 func (f *fakeCommitter) Commit(msg string) error {
-	if f.err != nil {
-		err := f.err
-		f.err = nil
+	if f.errIndex < len(f.errs) {
+		err := f.errs[f.errIndex]
+		f.errIndex++
 		return err
 	}
 	f.committed = append(f.committed, msg)
@@ -40,9 +41,9 @@ func (f *fakeCommitter) Commit(msg string) error {
 }
 
 func (f *fakeCommitter) CommitAll(msg string) error {
-	if f.err != nil {
-		err := f.err
-		f.err = nil
+	if f.errIndex < len(f.errs) {
+		err := f.errs[f.errIndex]
+		f.errIndex++
 		return err
 	}
 	f.committedAll = append(f.committedAll, msg)
@@ -52,15 +53,16 @@ func (f *fakeCommitter) CommitAll(msg string) error {
 type fakeGenerator struct {
 	msgs    []string
 	index   int
-	err     error
+	errs    []error
+	errIdx  int
 	prompts []string
 }
 
 func (f *fakeGenerator) Generate(ctx context.Context, prompt string) (string, error) {
 	f.prompts = append(f.prompts, prompt)
-	if f.err != nil {
-		err := f.err
-		f.err = nil
+	if f.errIdx < len(f.errs) {
+		err := f.errs[f.errIdx]
+		f.errIdx++
 		return "", err
 	}
 	if f.index < len(f.msgs) {
@@ -156,7 +158,7 @@ func TestRun_printMode(t *testing.T) {
 
 func TestRun_generateError(t *testing.T) {
 	dp := &fakeDiffProvider{diff: "some diff", err: nil}
-	mg := &fakeGenerator{err: fmt.Errorf("LLM is down")}
+	mg := &fakeGenerator{errs: []error{fmt.Errorf("LLM is down")}}
 	var stdout, stderr bytes.Buffer
 
 	err := run(context.Background(), RunConfig{
@@ -382,7 +384,7 @@ func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 
 func TestInteractiveCommit_commitError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
-	c := &fakeCommitter{err: fmt.Errorf("git commit failed")}
+	c := &fakeCommitter{errs: []error{fmt.Errorf("git commit failed")}}
 	cfg := makeIC(mg, c, "a\n", false)
 
 	err := interactiveCommit(context.Background(), cfg, "some diff", false)
@@ -396,7 +398,7 @@ func TestInteractiveCommit_commitError(t *testing.T) {
 }
 
 func TestInteractiveCommit_generateError(t *testing.T) {
-	mg := &fakeGenerator{err: fmt.Errorf("LLM error")}
+	mg := &fakeGenerator{errs: []error{fmt.Errorf("LLM error")}}
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
@@ -560,6 +562,29 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	}
 }
 
+func TestResolveTemperature(t *testing.T) {
+	tests := []struct {
+		name     string
+		flag     float64
+		changed  bool
+		def      float64
+		expected float64
+	}{
+		{"flag changed", 0.7, true, 0.1, 0.7},
+		{"flag not changed", 0, false, 0.1, 0.1},
+		{"flag zero but changed", 0, true, 0.5, 0},
+		{"flag not changed with non-zero default", 0, false, 0.5, 0.5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveTemperature(tt.flag, tt.changed, tt.def)
+			if got != tt.expected {
+				t.Errorf("resolveTemperature(%v, %v, %v) = %v, want %v", tt.flag, tt.changed, tt.def, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestInterfaceCompliance(t *testing.T) {
 	var _ DiffProvider = (*git.Git)(nil)
 	var _ Committer = (*git.Git)(nil)
@@ -613,7 +638,7 @@ func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 
 func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 	mg := &fakeGenerator{msgs: []string{"feat: something"}}
-	c := &fakeCommitter{err: fmt.Errorf("git commit -a failed")}
+	c := &fakeCommitter{errs: []error{fmt.Errorf("git commit -a failed")}}
 	cfg := makeIC(mg, c, "a\n", true)
 
 	err := interactiveCommit(context.Background(), cfg, "some diff", true)

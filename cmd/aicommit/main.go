@@ -69,14 +69,8 @@ func main() {
 			for _, w := range warnings {
 				fmt.Fprintln(os.Stderr, w)
 			}
-			temp := temperatureFlag
-			retryTemp := retryTemperatureFlag
-			if !cmd.Flags().Changed("temperature") {
-				temp = client.Temperature
-			}
-			if !cmd.Flags().Changed("retry-temperature") {
-				retryTemp = client.RetryTemperature
-			}
+			temp := resolveTemperature(temperatureFlag, cmd.Flags().Changed("temperature"), client.Temperature)
+			retryTemp := resolveTemperature(retryTemperatureFlag, cmd.Flags().Changed("retry-temperature"), client.RetryTemperature)
 			err := run(cmd.Context(), RunConfig{
 				DiffProvider:     git.New(),
 				Generator:        client,
@@ -150,6 +144,14 @@ func diffForMode(dp DiffProvider, all bool) (string, error) {
 
 var errEmptyDiff = fmt.Errorf("empty diff")
 
+// resolveTemperature returns the flag value if it was explicitly set, otherwise the default.
+func resolveTemperature(flag float64, changed bool, defaultVal float64) float64 {
+	if changed {
+		return flag
+	}
+	return defaultVal
+}
+
 // generateWithFallback tries GenerateWithTemperature first, falling back to
 // Generate if the generator does not support temperature.
 func generateWithFallback(ctx context.Context, mg MessageGenerator, prompt string, temperature float64) (string, error) {
@@ -197,6 +199,11 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool
 			case "a", "":
 				if msg == "" {
 					fmt.Fprintln(cfg.Stderr, "Error: generated commit message is empty, retrying.")
+					previousSuggestions = append(previousSuggestions, msg)
+					if len(previousSuggestions) > 5 {
+						previousSuggestions = previousSuggestions[len(previousSuggestions)-5:]
+					}
+					isRetry = true
 					break confirmLoop
 				}
 				if all {
