@@ -2,12 +2,12 @@
 
 Generate Conventional Commit messages using a local LLM.
 
-aicommit reads your git diff, sends it to a local LM Studio instance, and prints a Conventional Commit message to stdout. By default it uses staged changes only; pass `--all` to include all changes.
+aicommit reads your git diff, sends it to an OpenAI-compatible LLM API, and prints a Conventional Commit message to stdout. By default it uses staged changes only; pass `--all` to include all changes.
 
 ## Prerequisites
 
 - [Go 1.24+](https://go.dev/dl/)
-- [LM Studio](https://lmstudio.ai/) running locally with a model loaded
+- An OpenAI-compatible LLM API server (e.g. [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [llama.cpp](https://github.com/ggml-org/llama.cpp))
 
 ## Install
 
@@ -81,7 +81,7 @@ feat: add user authentication
 
 ## Configuration
 
-The app connects to LM Studio at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Both can be overridden with environment variables:
+The app connects to an OpenAI-compatible API at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Both can be overridden with environment variables:
 
 ```bash
 AICOMMIT_URL=http://localhost:1234/v1/chat/completions AICOMMIT_MODEL=my-model aicommit
@@ -109,7 +109,7 @@ aicommit --temperature 0.2 --retry-temperature 0.6 --commit
 go test ./...
 ```
 
-Tests use fakes and `httptest` — no real git repo or LM Studio server required.
+Tests use fakes and `httptest` — no real git repo or LLM server required.
 
 ## Project Structure
 
@@ -117,6 +117,6 @@ Tests use fakes and `httptest` — no real git repo or LM Studio server required
 cmd/aicommit/main.go    # CLI entry point (Cobra)
 internal/git/diff.go    # Diff retrieval (staged and all)
 internal/git/commit.go  # Commit execution (staged and all)
-internal/llm/client.go  # LM Studio API client
+internal/llm/client.go  # OpenAI-compatible LLM API client
 internal/prompt/        # Prompt template construction
 ```
