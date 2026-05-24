@@ -53,6 +53,7 @@ type Client struct {
 	HTTPClient       *http.Client
 	URL              string
 	Model            string
+	APIKey           string
 	Temperature      float64
 	RetryTemperature float64
 	Timeout          time.Duration
@@ -86,6 +87,7 @@ func NewClient() (*Client, []string) {
 		HTTPClient:       &http.Client{},
 		URL:              envURL(),
 		Model:            envModel(),
+		APIKey:           envAPIKey(),
 		Temperature:      temp,
 		RetryTemperature: retryTemp,
 		Timeout:          timeout,
@@ -123,6 +125,11 @@ func envModel() string {
 		return m
 	}
 	return defaultModel
+}
+
+// envAPIKey returns the API key from the AICOMMIT_API_KEY environment variable.
+func envAPIKey() string {
+	return os.Getenv("AICOMMIT_API_KEY")
 }
 
 // envTemperature returns the temperature from the AICOMMIT_TEMPERATURE
@@ -210,6 +217,9 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
+		if c.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		}
 
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {

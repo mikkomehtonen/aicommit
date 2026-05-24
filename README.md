@@ -103,6 +103,14 @@ AICOMMIT_TEMPERATURE=0.2 AICOMMIT_RETRY_TEMPERATURE=0.6 aicommit --commit
 aicommit --temperature 0.2 --retry-temperature 0.6 --commit
 ```
 
+### API Key
+
+Some OpenAI-compatible servers require an `Authorization` header. Set `AICOMMIT_API_KEY` to send a `Bearer` token:
+
+```bash
+AICOMMIT_API_KEY=sk-your-key aicommit
+```
+
 ### Timeout
 
 The default HTTP timeout is `60s`. Override it with a Go duration string (`30s`, `2m`, `1m30s`, etc.):

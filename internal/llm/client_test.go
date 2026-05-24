@@ -427,6 +427,77 @@ func TestEnvRetryTemperature_negativeValue(t *testing.T) {
 	}
 }
 
+func TestEnvAPIKey(t *testing.T) {
+	t.Setenv("AICOMMIT_API_KEY", "sk-test123")
+	got := envAPIKey()
+	if got != "sk-test123" {
+		t.Errorf("envAPIKey() = %q, want %q", got, "sk-test123")
+	}
+}
+
+func TestEnvAPIKey_empty(t *testing.T) {
+	t.Setenv("AICOMMIT_API_KEY", "")
+	got := envAPIKey()
+	if got != "" {
+		t.Errorf("envAPIKey() = %q, want empty", got)
+	}
+}
+
+func TestGenerateWithTemperature_withAPIKey(t *testing.T) {
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		resp := response{
+			Choices: []choice{{Message: message{Content: "ok"}}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		HTTPClient: srv.Client(),
+		URL:        srv.URL,
+		Model:      "test-model",
+		APIKey:     "sk-secret",
+	}
+
+	_, err := client.GenerateWithTemperature(context.Background(), "prompt", 0.5)
+	if err != nil {
+		t.Fatalf("GenerateWithTemperature() error: %v", err)
+	}
+	if receivedAuth != "Bearer sk-secret" {
+		t.Errorf("Authorization header = %q, want %q", receivedAuth, "Bearer sk-secret")
+	}
+}
+
+func TestGenerateWithTemperature_withoutAPIKey(t *testing.T) {
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		resp := response{
+			Choices: []choice{{Message: message{Content: "ok"}}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		HTTPClient: srv.Client(),
+		URL:        srv.URL,
+		Model:      "test-model",
+	}
+
+	_, err := client.GenerateWithTemperature(context.Background(), "prompt", 0.5)
+	if err != nil {
+		t.Fatalf("GenerateWithTemperature() error: %v", err)
+	}
+	if receivedAuth != "" {
+		t.Errorf("Authorization header = %q, want empty", receivedAuth)
+	}
+}
+
 func TestNewClient_timeoutFromEnv(t *testing.T) {
 	t.Setenv("AICOMMIT_TIMEOUT", "90s")
 	t.Setenv("AICOMMIT_URL", "http://localhost:9999/v1/chat/completions")
