@@ -75,13 +75,13 @@ func main() {
 			for _, w := range warnings {
 				fmt.Fprintln(os.Stderr, w)
 			}
-if cmd.Flags().Changed("timeout") {
-			d, err := time.ParseDuration(timeoutFlag)
-			if err != nil {
-				return fmt.Errorf("invalid --timeout duration %q: %w", timeoutFlag, err)
+			if cmd.Flags().Changed("timeout") {
+				d, err := time.ParseDuration(timeoutFlag)
+				if err != nil {
+					return fmt.Errorf("invalid --timeout duration %q: %w", timeoutFlag, err)
+				}
+				client.Timeout = d
 			}
-			client.Timeout = d
-		}
 			temp := resolveTemperature(temperatureFlag, cmd.Flags().Changed("temperature"), client.Temperature)
 			retryTemp := resolveTemperature(retryTemperatureFlag, cmd.Flags().Changed("retry-temperature"), client.RetryTemperature)
 			g := git.New()
