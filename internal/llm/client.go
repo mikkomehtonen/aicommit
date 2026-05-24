@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -205,11 +206,9 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 }
 
 func isRetryableError(err error) bool {
-	if netErr, ok := err.(net.Error); ok {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
 		return netErr.Timeout()
-	}
-	if urlErr, ok := err.(*net.OpError); ok {
-		return urlErr.Temporary()
 	}
 	return false
 }
