@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -845,5 +847,177 @@ func TestInteractiveCommit_retryCapsAt5(t *testing.T) {
 	}
 	if strings.Contains(mg.prompts[8], "feat: msg2") {
 		t.Errorf("prompt[8] should not contain msg2 (capped out by prompt[8])")
+	}
+}
+
+// --- Integration Tests ---
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, out)
+	}
+}
+
+func chdirTemp(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "aicommit-integ-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+		_ = os.RemoveAll(dir)
+	})
+	return dir
+}
+
+func TestIntegration_emptyStagedDiff(t *testing.T) {
+	_ = chdirTemp(t)
+	runGit(t, ".", "init", "-b", "main")
+
+	g := git.New()
+	var stdout, stderr bytes.Buffer
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     g,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
+
+	if err != errEmptyDiff {
+		t.Errorf("expected errEmptyDiff, got %v", err)
+	}
+}
+
+func TestIntegration_stagedChangesPrintMode(t *testing.T) {
+	_ = chdirTemp(t)
+	runGit(t, ".", "init", "-b", "main")
+	if err := os.WriteFile("hello.txt", []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, ".", "add", "hello.txt")
+
+	g := git.New()
+	staged, err := g.StagedDiff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(staged, "hello") {
+		t.Fatalf("staged diff should contain file content, got: %s", staged)
+	}
+
+	var stdout bytes.Buffer
+	mg := &fakeGenerator{msgs: []string{"feat: add hello.txt"}}
+	err = run(context.Background(), RunConfig{
+		DiffProvider:     g,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           io.Discard,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "feat: add hello.txt") {
+		t.Errorf("stdout = %q, want 'feat: add hello.txt'", stdout.String())
+	}
+}
+
+func TestIntegration_allFlagNoHEAD(t *testing.T) {
+	_ = chdirTemp(t)
+	runGit(t, ".", "init", "-b", "main")
+	if err := os.WriteFile("new.txt", []byte("new file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, ".", "add", "new.txt")
+
+	g := git.New()
+	diff, err := g.AllDiff()
+	if err != nil {
+		t.Fatalf("AllDiff failed: %v", err)
+	}
+	if !strings.Contains(diff, "new file") {
+		t.Fatalf("AllDiff fallback should contain file content, got: %s", diff)
+	}
+
+	var stdout bytes.Buffer
+	mg := &fakeGenerator{msgs: []string{"feat: add new.txt"}}
+	err = run(context.Background(), RunConfig{
+		DiffProvider:     g,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           io.Discard,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		AllFlag:          true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "feat: add new.txt") {
+		t.Errorf("stdout = %q, want 'feat: add new.txt'", stdout.String())
+	}
+}
+
+func TestIntegration_interactiveCommitRealGit(t *testing.T) {
+	_ = chdirTemp(t)
+	runGit(t, ".", "init", "-b", "main")
+	runGit(t, ".", "config", "user.email", "test@test.com")
+	runGit(t, ".", "config", "user.name", "Test")
+	if err := os.WriteFile("initial.txt", []byte("initial\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, ".", "add", "initial.txt")
+	runGit(t, ".", "commit", "-m", "initial")
+
+	if err := os.WriteFile("change.txt", []byte("change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, ".", "add", "change.txt")
+
+	g := git.New()
+	c := &fakeCommitter{}
+	mg := &fakeGenerator{msgs: []string{"feat: add change.txt"}}
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     g,
+		Generator:        mg,
+		Committer:        c,
+		Stdin:            strings.NewReader("a\n"),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		CommitFlag:       true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: add change.txt" {
+		t.Errorf("committed %q, want %q", c.committed[0], "feat: add change.txt")
 	}
 }
