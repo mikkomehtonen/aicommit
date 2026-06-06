@@ -3,6 +3,7 @@ package llm
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,7 +85,20 @@ func NewClient() (*Client, []string) {
 	}
 
 	return &Client{
-		HTTPClient:       &http.Client{},
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				DialContext: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ResponseHeaderTimeout: 10 * time.Second,
+				IdleConnTimeout:       30 * time.Second,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: false,
+				},
+			},
+		},
 		URL:              envURL(),
 		Model:            envModel(),
 		APIKey:           envAPIKey(),
