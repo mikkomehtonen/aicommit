@@ -43,7 +43,19 @@ func (g *Git) StagedDiff() (string, error) {
 	return string(out), nil
 }
 
+// UnstagedDiff returns the output of `git diff` (unstaged changes).
+func (g *Git) UnstagedDiff() (string, error) {
+	cmd := exec.Command("git", "diff")
+	out, err := g.Exec.Output(cmd)
+	if err != nil {
+		return "", fmt.Errorf("running git diff: %w", err)
+	}
+	return string(out), nil
+}
+
 // AllDiff returns the output of `git diff HEAD`.
+// If there is no HEAD (first commit), it falls back to combining
+// StagedDiff and UnstagedDiff.
 func (g *Git) AllDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "HEAD")
 	out, err := g.Exec.CombinedOutput(cmd)
@@ -53,7 +65,18 @@ func (g *Git) AllDiff() (string, error) {
 			if strings.Contains(stderr, "bad revision 'HEAD'") ||
 				strings.Contains(stderr, "does not have any commits") ||
 				strings.Contains(stderr, "unknown revision or path not in the working tree") {
-				return "", nil
+				staged, err := g.StagedDiff()
+				if err != nil {
+					return "", fmt.Errorf("getting staged diff (fallback): %w", err)
+				}
+				unstaged, err := g.UnstagedDiff()
+				if err != nil {
+					return "", fmt.Errorf("getting unstaged diff (fallback): %w", err)
+				}
+				if staged != "" && unstaged != "" {
+					return staged + "\n" + unstaged, nil
+				}
+				return staged + unstaged, nil
 			}
 		}
 		return "", fmt.Errorf("running git diff HEAD: %w: %s", err, strings.TrimSpace(string(out)))

@@ -67,9 +67,45 @@ func TestAllDiff(t *testing.T) {
 	}
 }
 
-func TestAllDiff_noHEAD(t *testing.T) {
+func TestAllDiff_noHEAD_fallback(t *testing.T) {
+	calls := 0
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
-		return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+		calls++
+		if calls == 1 {
+			return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+		} else if calls == 2 {
+			wantArgs := []string{"git", "diff", "--staged"}
+			if !reflect.DeepEqual(cmd.Args, wantArgs) {
+				return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+			}
+			return []byte("staged diff output"), nil
+		} else {
+			wantArgs := []string{"git", "diff"}
+			if !reflect.DeepEqual(cmd.Args, wantArgs) {
+				return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+			}
+			return []byte("unstaged diff output"), nil
+		}
+	}}
+	g := &Git{Exec: fakeExec}
+
+	out, err := g.AllDiff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "staged diff output\nunstaged diff output" {
+		t.Errorf("got %q, want %q", out, "staged diff output\nunstaged diff output")
+	}
+}
+
+func TestAllDiff_noHEAD_emptyFallback(t *testing.T) {
+	calls := 0
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+		}
+		return []byte(""), nil
 	}}
 	g := &Git{Exec: fakeExec}
 
@@ -94,6 +130,25 @@ func TestAllDiff_exitCode128_otherError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("error = %v, want error containing stderr text", err)
+	}
+}
+
+func TestUnstagedDiff(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		wantArgs := []string{"git", "diff"}
+		if !reflect.DeepEqual(cmd.Args, wantArgs) {
+			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+		}
+		return []byte("unstaged diff output"), nil
+	}}
+	g := &Git{Exec: fakeExec}
+
+	out, err := g.UnstagedDiff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "unstaged diff output" {
+		t.Errorf("got %q, want %q", out, "unstaged diff output")
 	}
 }
 
