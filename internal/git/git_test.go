@@ -154,7 +154,7 @@ func TestUnstagedDiff(t *testing.T) {
 
 func TestStagedDiff_error(t *testing.T) {
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
-		return nil, fmt.Errorf("exit status 128")
+		return []byte("fatal: not a git repository"), fmt.Errorf("exit status 128")
 	}}
 	g := &Git{Exec: fakeExec}
 
@@ -164,6 +164,9 @@ func TestStagedDiff_error(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "running git diff --staged") {
 		t.Errorf("error = %v, want error containing command text", err)
+	}
+	if !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("error = %v, want error containing stderr text", err)
 	}
 }
 

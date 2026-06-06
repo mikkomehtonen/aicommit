@@ -36,9 +36,9 @@ func New() *Git {
 // StagedDiff returns the output of `git diff --staged`.
 func (g *Git) StagedDiff() (string, error) {
 	cmd := exec.Command("git", "diff", "--staged")
-	out, err := g.Exec.Output(cmd)
+	out, err := g.Exec.CombinedOutput(cmd)
 	if err != nil {
-		return "", fmt.Errorf("running git diff --staged: %w", err)
+		return "", fmt.Errorf("running git diff --staged: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
@@ -46,9 +46,9 @@ func (g *Git) StagedDiff() (string, error) {
 // UnstagedDiff returns the output of `git diff` (unstaged changes).
 func (g *Git) UnstagedDiff() (string, error) {
 	cmd := exec.Command("git", "diff")
-	out, err := g.Exec.Output(cmd)
+	out, err := g.Exec.CombinedOutput(cmd)
 	if err != nil {
-		return "", fmt.Errorf("running git diff: %w", err)
+		return "", fmt.Errorf("running git diff: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
