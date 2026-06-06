@@ -143,7 +143,7 @@ func TestUnstagedDiff(t *testing.T) {
 	}}
 	g := &Git{Exec: fakeExec}
 
-	out, err := g.UnstagedDiff()
+	out, err := g.unstagedDiff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

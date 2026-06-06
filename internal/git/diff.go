@@ -43,8 +43,8 @@ func (g *Git) StagedDiff() (string, error) {
 	return string(out), nil
 }
 
-// UnstagedDiff returns the output of `git diff` (unstaged changes).
-func (g *Git) UnstagedDiff() (string, error) {
+// unstagedDiff returns the output of `git diff` (unstaged changes).
+func (g *Git) unstagedDiff() (string, error) {
 	cmd := exec.Command("git", "diff")
 	out, err := g.Exec.CombinedOutput(cmd)
 	if err != nil {
@@ -69,7 +69,7 @@ func (g *Git) AllDiff() (string, error) {
 				if err != nil {
 					return "", fmt.Errorf("getting staged diff (fallback): %w", err)
 				}
-				unstaged, err := g.UnstagedDiff()
+				unstaged, err := g.unstagedDiff()
 				if err != nil {
 					return "", fmt.Errorf("getting unstaged diff (fallback): %w", err)
 				}
