@@ -1,1 +1,10 @@
 aicommit
+aicommit.exe
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
