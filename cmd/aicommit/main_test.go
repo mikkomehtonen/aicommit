@@ -18,17 +18,26 @@ import (
 // --- Fakes ---
 
 type fakeDiffProvider struct {
-	diff string
-	err  error
+	diff        string
+	err         error
+	headDiff    string
+	headDiffErr error
+	headMsg     string
+	headMsgErr  error
 }
 
 func (f *fakeDiffProvider) StagedDiff() (string, error) { return f.diff, f.err }
 
 func (f *fakeDiffProvider) AllDiff() (string, error) { return f.diff, f.err }
 
+func (f *fakeDiffProvider) HeadDiff() (string, error) { return f.headDiff, f.headDiffErr }
+
+func (f *fakeDiffProvider) HeadMessage() (string, error) { return f.headMsg, f.headMsgErr }
+
 type fakeCommitter struct {
 	committed    []string
 	committedAll []string
+	reworded     []string
 	errs         []error
 	errIndex     int
 }
@@ -50,6 +59,16 @@ func (f *fakeCommitter) CommitAll(msg string) error {
 		return err
 	}
 	f.committedAll = append(f.committedAll, msg)
+	return nil
+}
+
+func (f *fakeCommitter) RewordCommit(msg string) error {
+	if f.errIndex < len(f.errs) {
+		err := f.errs[f.errIndex]
+		f.errIndex++
+		return err
+	}
+	f.reworded = append(f.reworded, msg)
 	return nil
 }
 
@@ -285,7 +304,7 @@ func TestRun_allFlag_diffError(t *testing.T) {
 func makeIC(mg *fakeGenerator, c *fakeCommitter, stdin string, all bool) RunConfig {
 	var stdout, stderr bytes.Buffer
 	return RunConfig{
-		DiffProvider:     &fakeDiffProvider{diff: "test diff"},
+		DiffProvider:     &fakeDiffProvider{diff: "test diff", headMsg: "old message"},
 		Generator:        mg,
 		Committer:        c,
 		Stdin:            strings.NewReader(stdin),
@@ -301,7 +320,7 @@ func TestInteractiveCommit_accept(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -319,7 +338,7 @@ func TestInteractiveCommit_acceptWithEnter(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -334,7 +353,7 @@ func TestInteractiveCommit_retry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -352,7 +371,7 @@ func TestInteractiveCommit_cancel(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "c\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -370,7 +389,7 @@ func TestInteractiveCommit_emptyMessageRetries(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -391,7 +410,7 @@ func TestInteractiveCommit_commitError(t *testing.T) {
 	c := &fakeCommitter{errs: []error{fmt.Errorf("git commit failed")}}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -406,7 +425,7 @@ func TestInteractiveCommit_generateError(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -421,7 +440,7 @@ func TestInteractiveCommit_unknownChoice(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "x\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -439,7 +458,7 @@ func TestInteractiveCommit_eof(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -454,7 +473,7 @@ func TestInteractiveCommit_editThenAccept(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited message\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -472,7 +491,7 @@ func TestInteractiveCommit_editEmptyKeepsOriginal(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -490,7 +509,7 @@ func TestInteractiveCommit_editWhitespaceOnlyKeepsOriginal(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n   \na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -505,7 +524,7 @@ func TestInteractiveCommit_editThenCancel(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited\nc\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -523,7 +542,7 @@ func TestInteractiveCommit_editThenRetry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: edited\nr\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -541,7 +560,7 @@ func TestInteractiveCommit_editTrimsWhitespace(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\n  feat: trimmed  \na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -556,7 +575,7 @@ func TestInteractiveCommit_multipleEdits(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "e\nfeat: first edit\ne\nfeat: final edit\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -680,7 +699,7 @@ func TestInteractiveCommit_allFlag_usesCommitAll(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", true)
+	err := interactiveCommit(context.Background(), cfg, "some diff", true, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -701,7 +720,7 @@ func TestInteractiveCommit_allFlag_commitAllError(t *testing.T) {
 	c := &fakeCommitter{errs: []error{fmt.Errorf("git commit -a failed")}}
 	cfg := makeIC(mg, c, "a\n", true)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", true)
+	err := interactiveCommit(context.Background(), cfg, "some diff", true, false, prompt.Build("some diff"), "")
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -716,7 +735,7 @@ func TestInteractiveCommit_noAllFlag_usesCommit(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "a\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -734,7 +753,7 @@ func TestInteractiveCommit_retryUsesBuildRetry(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -762,7 +781,7 @@ func TestInteractiveCommit_multipleRetriesAccumulate(t *testing.T) {
 	c := &fakeCommitter{}
 	cfg := makeIC(mg, c, "r\nr\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -802,7 +821,7 @@ func TestInteractiveCommit_retryCapsAt5(t *testing.T) {
 	// 8 retries then accept
 	cfg := makeIC(mg, c, "r\nr\nr\nr\nr\nr\nr\nr\na\n", false)
 
-	err := interactiveCommit(context.Background(), cfg, "some diff", false)
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -881,6 +900,206 @@ func chdirTemp(t *testing.T) string {
 	})
 	return dir
 }
+
+// --- Reword Tests ---
+
+func TestRun_reword_printMode(t *testing.T) {
+	dp := &fakeDiffProvider{headDiff: "some head diff", headMsg: "old message"}
+	mg := &fakeGenerator{msgs: []string{"feat: reworded message"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		RewordFlag:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := stdout.String()
+	want := "feat: reworded message\n"
+	if got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRun_reword_usesBuildReword(t *testing.T) {
+	dp := &fakeDiffProvider{headDiff: "head diff", headMsg: "old message"}
+	mg := &fakeGenerator{msgs: []string{"feat: reworded"}}
+	var stdout bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           io.Discard,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		RewordFlag:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mg.prompts) != 1 {
+		t.Fatalf("expected 1 Generate call, got %d", len(mg.prompts))
+	}
+	if !strings.Contains(mg.prompts[0], "old message") {
+		t.Errorf("reword prompt should contain current message, got %q", mg.prompts[0])
+	}
+	if !strings.Contains(mg.prompts[0], "head diff") {
+		t.Errorf("reword prompt should contain diff, got %q", mg.prompts[0])
+	}
+}
+
+func TestRun_reword_emptyHeadDiff(t *testing.T) {
+	dp := &fakeDiffProvider{headDiff: "", headMsg: "old message"}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		RewordFlag:       true,
+	})
+
+	if err != errEmptyDiff {
+		t.Errorf("expected errEmptyDiff, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "No changes in the current commit") {
+		t.Errorf("stderr = %q, want 'No changes in the current commit'", stderr.String())
+	}
+}
+
+func TestRun_reword_noCommits(t *testing.T) {
+	dp := &fakeDiffProvider{headDiffErr: fmt.Errorf("no commits exist in this repository")}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		RewordFlag:       true,
+	})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no commits exist") {
+		t.Errorf("error = %v, want error containing 'no commits exist'", err)
+	}
+}
+
+func TestRun_reword_noMessage(t *testing.T) {
+	dp := &fakeDiffProvider{headDiff: "some diff", headMsgErr: fmt.Errorf("no commits exist")}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		RewordFlag:       true,
+	})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "getting current commit message") {
+		t.Errorf("error = %v, want error containing 'getting current commit message'", err)
+	}
+}
+
+func TestInteractiveCommit_reword_usesRewordCommit(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: reworded"}}
+	c := &fakeCommitter{}
+	cfg := makeIC(mg, c, "a\n", false)
+
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, true, prompt.BuildReword("some diff", "old message"), "old message")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.reworded) != 1 {
+		t.Fatalf("expected 1 RewordCommit call, got %d", len(c.reworded))
+	}
+	if len(c.committed) != 0 {
+		t.Errorf("expected 0 Commit calls, got %d", len(c.committed))
+	}
+	if c.reworded[0] != "feat: reworded" {
+		t.Errorf("reworded %q, want %q", c.reworded[0], "feat: reworded")
+	}
+}
+
+func TestInteractiveCommit_reword_retryUsesBuildRewordRetry(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: first", "feat: second"}}
+	c := &fakeCommitter{}
+	cfg := makeIC(mg, c, "r\na\n", false)
+
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, true, prompt.BuildReword("some diff", "old message"), "old message")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mg.prompts) != 2 {
+		t.Fatalf("expected 2 Generate calls, got %d", len(mg.prompts))
+	}
+	if !strings.Contains(mg.prompts[0], "old message") {
+		t.Errorf("first reword prompt should contain current message, got %q", mg.prompts[0])
+	}
+	if !strings.Contains(mg.prompts[1], "feat: first") {
+		t.Errorf("retry prompt should contain rejected suggestion, got %q", mg.prompts[1])
+	}
+	if !strings.Contains(mg.prompts[1], "old message") {
+		t.Errorf("retry prompt should still contain current message, got %q", mg.prompts[1])
+	}
+	if !strings.Contains(mg.prompts[1], "rejected") {
+		t.Errorf("retry prompt should mention 'rejected', got %q", mg.prompts[1])
+	}
+}
+
+func TestInteractiveCommit_reword_commitError(t *testing.T) {
+	mg := &fakeGenerator{msgs: []string{"feat: reworded"}}
+	c := &fakeCommitter{errs: []error{fmt.Errorf("git commit --amend failed")}}
+	cfg := makeIC(mg, c, "a\n", false)
+
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, true, prompt.BuildReword("some diff", "old message"), "old message")
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "amending commit") {
+		t.Errorf("error = %v, want error containing 'amending commit'", err)
+	}
+}
+
+// --- Integration Tests ---
 
 func TestIntegration_emptyStagedDiff(t *testing.T) {
 	_ = chdirTemp(t)

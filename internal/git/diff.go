@@ -88,6 +88,44 @@ type exitCoder interface {
 	ExitCode() int
 }
 
+// HeadDiff returns the diff of the most recent commit via `git show --format="" HEAD`.
+// Returns an error if there are no commits yet.
+func (g *Git) HeadDiff() (string, error) {
+	cmd := exec.Command("git", "show", "--format=", "HEAD")
+	out, err := g.Exec.CombinedOutput(cmd)
+	if err != nil {
+		if hasExitCode(err, 128) {
+			stderr := strings.TrimSpace(string(out))
+			if strings.Contains(stderr, "bad revision 'HEAD'") ||
+				strings.Contains(stderr, "does not have any commits") ||
+				strings.Contains(stderr, "unknown revision or path not in the working tree") {
+				return "", fmt.Errorf("no commits exist in this repository")
+			}
+		}
+		return "", fmt.Errorf("running git show HEAD: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// HeadMessage returns the commit message of the most recent commit via `git log -1 --format=%B`.
+// The returned message has a trailing newline stripped. Returns an error if no commits exist.
+func (g *Git) HeadMessage() (string, error) {
+	cmd := exec.Command("git", "log", "-1", "--format=%B")
+	out, err := g.Exec.CombinedOutput(cmd)
+	if err != nil {
+		if hasExitCode(err, 128) {
+			stderr := strings.TrimSpace(string(out))
+			if strings.Contains(stderr, "bad revision 'HEAD'") ||
+				strings.Contains(stderr, "does not have any commits") ||
+				strings.Contains(stderr, "unknown revision or path not in the working tree") {
+				return "", fmt.Errorf("no commits exist in this repository")
+			}
+		}
+		return "", fmt.Errorf("running git log: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
 func hasExitCode(err error, code int) bool {
 	if ec, ok := err.(exitCoder); ok {
 		return ec.ExitCode() == code

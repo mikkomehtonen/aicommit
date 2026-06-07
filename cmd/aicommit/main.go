@@ -21,12 +21,15 @@ import (
 type DiffProvider interface {
 	StagedDiff() (string, error)
 	AllDiff() (string, error)
+	HeadDiff() (string, error)
+	HeadMessage() (string, error)
 }
 
-// Committer creates a git commit.
+// Committer creates a git commit or amends an existing one.
 type Committer interface {
 	Commit(message string) error
 	CommitAll(message string) error
+	RewordCommit(message string) error
 }
 
 // MessageGenerator sends a prompt to the LLM and returns the response.
@@ -52,6 +55,7 @@ type RunConfig struct {
 	RetryTemperature float64
 	AllFlag          bool
 	CommitFlag       bool
+	RewordFlag       bool
 }
 
 var version = "dev"
@@ -60,6 +64,7 @@ func main() {
 	var (
 		commitFlag           bool
 		allFlag              bool
+		rewordFlag           bool
 		temperatureFlag      float64
 		retryTemperatureFlag float64
 		timeoutFlag          string
@@ -85,6 +90,9 @@ func main() {
 			temp := resolveTemperature(temperatureFlag, cmd.Flags().Changed("temperature"), client.Temperature)
 			retryTemp := resolveTemperature(retryTemperatureFlag, cmd.Flags().Changed("retry-temperature"), client.RetryTemperature)
 			g := git.New()
+			if allFlag && rewordFlag {
+				return fmt.Errorf("--all and --reword are mutually exclusive")
+			}
 			err := run(cmd.Context(), RunConfig{
 				DiffProvider:     g,
 				Generator:        client,
@@ -96,6 +104,7 @@ func main() {
 				RetryTemperature: retryTemp,
 				AllFlag:          allFlag,
 				CommitFlag:       commitFlag,
+				RewordFlag:       rewordFlag,
 			})
 			if err == errEmptyDiff {
 				os.Exit(1)
@@ -106,6 +115,7 @@ func main() {
 
 	rootCmd.Flags().BoolVarP(&commitFlag, "commit", "c", false, "prompt to accept/retry and commit the generated message")
 	rootCmd.Flags().BoolVarP(&allFlag, "all", "a", false, "include all changes (staged + unstaged) via git diff HEAD")
+	rootCmd.Flags().BoolVarP(&rewordFlag, "reword", "r", false, "reword the current commit's message based on its diff")
 	rootCmd.Flags().Float64Var(&temperatureFlag, "temperature", 0, "temperature for the first request (default: AICOMMIT_TEMPERATURE env var, or 0.1)")
 	rootCmd.Flags().Float64Var(&retryTemperatureFlag, "retry-temperature", 0, "temperature for retry requests (default: AICOMMIT_RETRY_TEMPERATURE env var, or 0.4)")
 	rootCmd.Flags().StringVar(&timeoutFlag, "timeout", "", "HTTP timeout as a Go duration string, e.g. \"60s\" or \"2m\" (default: AICOMMIT_TIMEOUT env var, or 60s)")
@@ -116,7 +126,7 @@ func main() {
 }
 
 func run(ctx context.Context, cfg RunConfig) error {
-	diff, err := diffForMode(cfg.DiffProvider, cfg.AllFlag)
+	diff, err := diffForMode(cfg.DiffProvider, cfg.AllFlag, cfg.RewordFlag)
 	if err != nil {
 		return err
 	}
@@ -124,14 +134,27 @@ func run(ctx context.Context, cfg RunConfig) error {
 	if strings.TrimSpace(diff) == "" {
 		if cfg.AllFlag {
 			fmt.Fprintln(cfg.Stderr, "No changes found.")
+		} else if cfg.RewordFlag {
+			fmt.Fprintln(cfg.Stderr, "No changes in the current commit.")
 		} else {
 			fmt.Fprintln(cfg.Stderr, "No staged changes found. Stage your changes with: git add <files>\nOr use --all to include all changes.")
 		}
 		return errEmptyDiff
 	}
 
+	promptText := prompt.Build(diff)
+	var currentMsg string
+	if cfg.RewordFlag {
+		var err error
+		currentMsg, err = cfg.DiffProvider.HeadMessage()
+		if err != nil {
+			return fmt.Errorf("getting current commit message: %w", err)
+		}
+		promptText = prompt.BuildReword(diff, currentMsg)
+	}
+
 	if !cfg.CommitFlag {
-		msg, err := generateWithFallback(ctx, cfg.Generator, prompt.Build(diff), cfg.Temperature)
+		msg, err := generateWithFallback(ctx, cfg.Generator, promptText, cfg.Temperature)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
@@ -139,10 +162,17 @@ func run(ctx context.Context, cfg RunConfig) error {
 		return nil
 	}
 
-	return interactiveCommit(ctx, cfg, diff, cfg.AllFlag)
+	return interactiveCommit(ctx, cfg, diff, cfg.AllFlag, cfg.RewordFlag, promptText, currentMsg)
 }
 
-func diffForMode(dp DiffProvider, all bool) (string, error) {
+func diffForMode(dp DiffProvider, all, reword bool) (string, error) {
+	if reword {
+		diff, err := dp.HeadDiff()
+		if err != nil {
+			return "", fmt.Errorf("getting current commit diff: %w", err)
+		}
+		return diff, nil
+	}
 	if all {
 		diff, err := dp.AllDiff()
 		if err != nil {
@@ -180,7 +210,7 @@ func generateWithFallback(ctx context.Context, mg MessageGenerator, prompt strin
 	return mg.Generate(ctx, prompt)
 }
 
-func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool) error {
+func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, reword bool, initialPrompt, currentMsg string) error {
 	scanner := bufio.NewScanner(cfg.Stdin)
 	var previousSuggestions []string
 	isRetry := false
@@ -191,9 +221,13 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool
 		}
 		var promptText string
 		if isRetry {
-			promptText = prompt.BuildRetry(diff, previousSuggestions)
+			if reword {
+				promptText = prompt.BuildRewordRetry(diff, currentMsg, previousSuggestions)
+			} else {
+				promptText = prompt.BuildRetry(diff, previousSuggestions)
+			}
 		} else {
-			promptText = prompt.Build(diff)
+			promptText = initialPrompt
 		}
 		genTemp := cfg.Temperature
 		if isRetry {
@@ -231,7 +265,11 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all bool
 					isRetry = true
 					break confirmLoop
 				}
-				if all {
+				if reword {
+					if err := cfg.Committer.RewordCommit(msg); err != nil {
+						return fmt.Errorf("amending commit: %w", err)
+					}
+				} else if all {
 					if err := cfg.Committer.CommitAll(msg); err != nil {
 						return fmt.Errorf("committing: %w", err)
 					}

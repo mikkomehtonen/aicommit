@@ -223,3 +223,132 @@ func TestCommitAll(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestHeadDiff(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		wantArgs := []string{"git", "show", "--format=", "HEAD"}
+		if !reflect.DeepEqual(cmd.Args, wantArgs) {
+			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+		}
+		return []byte("head diff output"), nil
+	}}
+	g := &Git{Exec: fakeExec}
+
+	out, err := g.HeadDiff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "head diff output" {
+		t.Errorf("got %q, want %q", out, "head diff output")
+	}
+}
+
+func TestHeadDiff_noHEAD(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+	}}
+	g := &Git{Exec: fakeExec}
+
+	_, err := g.HeadDiff()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no commits exist") {
+		t.Errorf("error = %v, want error containing 'no commits exist'", err)
+	}
+}
+
+func TestHeadDiff_error(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: not a git repository"), &fakeExitError{code: 128}
+	}}
+	g := &Git{Exec: fakeExec}
+
+	_, err := g.HeadDiff()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("error = %v, want error containing stderr text", err)
+	}
+}
+
+func TestHeadMessage(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		wantArgs := []string{"git", "log", "-1", "--format=%B"}
+		if !reflect.DeepEqual(cmd.Args, wantArgs) {
+			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+		}
+		return []byte("feat: old message\n"), nil
+	}}
+	g := &Git{Exec: fakeExec}
+
+	out, err := g.HeadMessage()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "feat: old message" {
+		t.Errorf("got %q, want %q", out, "feat: old message")
+	}
+}
+
+func TestHeadMessage_multiline(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("feat: old message\n\nBody line.\n"), nil
+	}}
+	g := &Git{Exec: fakeExec}
+
+	out, err := g.HeadMessage()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "feat: old message\n\nBody line." {
+		t.Errorf("got %q, want trailing newline stripped", out)
+	}
+}
+
+func TestHeadMessage_noHEAD(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("fatal: bad revision 'HEAD'"), &fakeExitError{code: 128}
+	}}
+	g := &Git{Exec: fakeExec}
+
+	_, err := g.HeadMessage()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no commits exist") {
+		t.Errorf("error = %v, want error containing 'no commits exist'", err)
+	}
+}
+
+func TestRewordCommit(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		wantArgs := []string{"git", "commit", "--amend", "-m", "feat: new message", "--no-edit"}
+		if !reflect.DeepEqual(cmd.Args, wantArgs) {
+			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+		}
+		return []byte("[main 1234567] feat: new message"), nil
+	}}
+	g := &Git{Exec: fakeExec}
+
+	err := g.RewordCommit("feat: new message")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRewordCommit_error(t *testing.T) {
+	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
+		return []byte("error: cannot amend"), fmt.Errorf("exit status 1")
+	}}
+	g := &Git{Exec: fakeExec}
+
+	err := g.RewordCommit("feat: new message")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cannot amend") {
+		t.Errorf("error = %v, want error containing stderr text", err)
+	}
+}

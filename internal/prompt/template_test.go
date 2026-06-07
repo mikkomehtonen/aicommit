@@ -111,3 +111,60 @@ func TestBuildRetry_preservesPercentSigns(t *testing.T) {
 		t.Errorf("BuildRetry should preserve percent signs in suggestions, got: %s", got)
 	}
 }
+
+func TestBuildReword(t *testing.T) {
+	diff := "diff --git a/main.go b/main.go\n+hello"
+	currentMsg := "Changed stuff"
+
+	got := BuildReword(diff, currentMsg)
+
+	if !strings.Contains(got, diff) {
+		t.Errorf("BuildReword does not contain the diff")
+	}
+	if !strings.Contains(got, currentMsg) {
+		t.Errorf("BuildReword does not contain the current message")
+	}
+	if !strings.Contains(got, "Conventional Commit") {
+		t.Errorf("BuildReword should contain prompt instructions")
+	}
+	if !strings.Contains(got, "improved") {
+		t.Errorf("BuildReword should mention 'improved'")
+	}
+}
+
+func TestBuildRewordRetry(t *testing.T) {
+	diff := "some diff"
+	currentMsg := "old message"
+	previous := []string{"feat: first attempt"}
+
+	got := BuildRewordRetry(diff, currentMsg, previous)
+
+	if !strings.Contains(got, diff) {
+		t.Errorf("BuildRewordRetry does not contain the diff")
+	}
+	if !strings.Contains(got, currentMsg) {
+		t.Errorf("BuildRewordRetry does not contain the current message")
+	}
+	if !strings.Contains(got, "feat: first attempt") {
+		t.Errorf("BuildRewordRetry does not contain the previous suggestion")
+	}
+	if !strings.Contains(got, "rejected") {
+		t.Errorf("BuildRewordRetry should mention 'rejected'")
+	}
+	if !strings.Contains(got, "different") {
+		t.Errorf("BuildRewordRetry should instruct to generate a different message")
+	}
+}
+
+func TestBuildReword_emptyCurrentMessage(t *testing.T) {
+	diff := "some diff"
+
+	got := BuildReword(diff, "")
+
+	if !strings.Contains(got, diff) {
+		t.Errorf("BuildReword does not contain the diff")
+	}
+	if !strings.Contains(got, "Conventional Commit") {
+		t.Errorf("BuildReword should contain prompt instructions")
+	}
+}
