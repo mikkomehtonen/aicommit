@@ -213,6 +213,8 @@ func generateWithFallback(ctx context.Context, mg MessageGenerator, prompt strin
 func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, reword bool, initialPrompt, currentMsg string) error {
 	scanner := bufio.NewScanner(cfg.Stdin)
 	var previousSuggestions []string
+	// isRetry tracks whether we've retried at least once. After the first retry,
+	// all subsequent generations use cfg.RetryTemperature for the session.
 	isRetry := false
 
 	for {
