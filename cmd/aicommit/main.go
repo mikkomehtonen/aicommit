@@ -193,7 +193,7 @@ var errEmptyDiff = errors.New("empty diff")
 func resolveTemperature(flag float64, changed bool, defaultVal float64) float64 {
 	if changed {
 		if flag < 0 {
-			fmt.Fprintln(os.Stderr, fmt.Sprintf("warning: negative temperature %f, clamping to 0", flag))
+			fmt.Fprintf(os.Stderr, "warning: negative temperature %f, clamping to 0\n", flag)
 			return 0
 		}
 		return flag
