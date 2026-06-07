@@ -32,11 +32,6 @@ type Committer interface {
 	RewordCommit(message string) error
 }
 
-// MessageGenerator sends a prompt to the LLM and returns the response.
-type MessageGenerator interface {
-	Generate(ctx context.Context, prompt string) (string, error)
-}
-
 // MessageGeneratorWithTemperature sends a prompt to the LLM with a given
 // temperature and returns the response.
 type MessageGeneratorWithTemperature interface {
@@ -46,7 +41,7 @@ type MessageGeneratorWithTemperature interface {
 // RunConfig holds the dependencies and settings for run.
 type RunConfig struct {
 	DiffProvider     DiffProvider
-	Generator        MessageGenerator
+	Generator        MessageGeneratorWithTemperature
 	Committer        Committer
 	Stdin            io.Reader
 	Stdout           io.Writer
@@ -154,7 +149,7 @@ func run(ctx context.Context, cfg RunConfig) error {
 	}
 
 	if !cfg.CommitFlag {
-		msg, err := generateWithFallback(ctx, cfg.Generator, promptText, cfg.Temperature)
+		msg, err := cfg.Generator.GenerateWithTemperature(ctx, promptText, cfg.Temperature)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
@@ -201,15 +196,6 @@ func resolveTemperature(flag float64, changed bool, defaultVal float64) float64 
 	return defaultVal
 }
 
-// generateWithFallback tries GenerateWithTemperature first, falling back to
-// Generate if the generator does not support temperature.
-func generateWithFallback(ctx context.Context, mg MessageGenerator, prompt string, temperature float64) (string, error) {
-	if withTemp, ok := mg.(MessageGeneratorWithTemperature); ok {
-		return withTemp.GenerateWithTemperature(ctx, prompt, temperature)
-	}
-	return mg.Generate(ctx, prompt)
-}
-
 func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, reword bool, initialPrompt, currentMsg string) error {
 	scanner := bufio.NewScanner(cfg.Stdin)
 	var previousSuggestions []string
@@ -235,7 +221,7 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 		if isRetry {
 			genTemp = cfg.RetryTemperature
 		}
-		msg, err := generateWithFallback(ctx, cfg.Generator, promptText, genTemp)
+		msg, err := cfg.Generator.GenerateWithTemperature(ctx, promptText, genTemp)
 		if err != nil {
 			return fmt.Errorf("generating commit message: %w", err)
 		}
