@@ -1279,9 +1279,9 @@ func TestRun_commitFlag_goesInteractive(t *testing.T) {
 	}
 }
 
-func TestRun_allAndReword_mutuallyExclusive(t *testing.T) {
+func TestRun_allAndReword_rewordTakesPrecedence(t *testing.T) {
 	dp := &fakeDiffProvider{diff: "some diff", headDiff: "head diff", headMsg: "old message"}
-	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	mg := &fakeGenerator{msgs: []string{"feat: reword msg"}}
 	var stdout, stderr bytes.Buffer
 
 	err := run(context.Background(), RunConfig{
@@ -1301,5 +1301,8 @@ func TestRun_allAndReword_mutuallyExclusive(t *testing.T) {
 	// but with both flags set, reword takes precedence for diff.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "feat: reword msg" {
+		t.Errorf("stdout %q, want %q", got, "feat: reword msg")
 	}
 }
