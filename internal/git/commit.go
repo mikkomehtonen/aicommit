@@ -30,7 +30,8 @@ func (g *Git) CommitAll(message string) error {
 
 // RewordCommit amends the most recent commit with a new message.
 func (g *Git) RewordCommit(message string) error {
-	cmd := exec.Command("git", "commit", "--amend", "-m", message, "--no-edit")
+	cmd := exec.Command("git", "commit", "--amend", "-F", "-", "--no-edit")
+	cmd.Stdin = strings.NewReader(message)
 	out, err := g.Exec.CombinedOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("running git commit --amend: %w: %s", err, strings.TrimSpace(string(out)))

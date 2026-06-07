@@ -324,9 +324,17 @@ func TestHeadMessage_noHEAD(t *testing.T) {
 
 func TestRewordCommit(t *testing.T) {
 	fakeExec := &fakeExecutor{fn: func(cmd *exec.Cmd) ([]byte, error) {
-		wantArgs := []string{"git", "commit", "--amend", "-m", "feat: new message", "--no-edit"}
+		wantArgs := []string{"git", "commit", "--amend", "-F", "-", "--no-edit"}
 		if !reflect.DeepEqual(cmd.Args, wantArgs) {
 			return nil, fmt.Errorf("unexpected args: got %v, want %v", cmd.Args, wantArgs)
+		}
+		if cmd.Stdin != nil {
+			stdinBytes, _ := io.ReadAll(cmd.Stdin)
+			if string(stdinBytes) != "feat: new message" {
+				return nil, fmt.Errorf("unexpected stdin: %q", string(stdinBytes))
+			}
+		} else {
+			return nil, fmt.Errorf("expected stdin to be set")
 		}
 		return []byte("[main 1234567] feat: new message"), nil
 	}}
