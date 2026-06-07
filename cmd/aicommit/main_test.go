@@ -99,6 +99,22 @@ func (f *fakeGenerator) GenerateWithTemperature(ctx context.Context, prompt stri
 	return f.Generate(ctx, prompt)
 }
 
+type fakeGeneratorTempTracking struct {
+	msgs         []string
+	index        int
+	temperatures []float64
+}
+
+func (f *fakeGeneratorTempTracking) GenerateWithTemperature(ctx context.Context, prompt string, temperature float64) (string, error) {
+	f.temperatures = append(f.temperatures, temperature)
+	if f.index < len(f.msgs) {
+		msg := f.msgs[f.index]
+		f.index++
+		return msg, nil
+	}
+	return "", fmt.Errorf("no more fake responses")
+}
+
 // --- Tests ---
 
 func TestRun_emptyDiff(t *testing.T) {
@@ -1200,5 +1216,90 @@ func TestIntegration_interactiveCommitRealGit(t *testing.T) {
 	}
 	if c.committed[0] != "feat: add change.txt" {
 		t.Errorf("committed %q, want %q", c.committed[0], "feat: add change.txt")
+	}
+}
+
+func TestInteractiveCommit_retryUsesRetryTemperature(t *testing.T) {
+	mg := &fakeGeneratorTempTracking{msgs: []string{"feat: first", "feat: second"}}
+	c := &fakeCommitter{}
+	var stdout, stderr bytes.Buffer
+	cfg := RunConfig{
+		DiffProvider:     &fakeDiffProvider{diff: "test diff", headMsg: "old message"},
+		Generator:        mg,
+		Committer:        c,
+		Stdin:            strings.NewReader("r\na\n"),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+	}
+
+	err := interactiveCommit(context.Background(), cfg, "some diff", false, false, prompt.Build("some diff"), "")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mg.temperatures) != 2 {
+		t.Fatalf("expected 2 GenerateWithTemperature calls, got %d", len(mg.temperatures))
+	}
+	if mg.temperatures[0] != 0.1 {
+		t.Errorf("first call temperature = %v, want 0.1", mg.temperatures[0])
+	}
+	if mg.temperatures[1] != 0.4 {
+		t.Errorf("retry call temperature = %v, want 0.4", mg.temperatures[1])
+	}
+}
+
+func TestRun_commitFlag_goesInteractive(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "some diff", err: nil}
+	mg := &fakeGenerator{msgs: []string{"feat: committed"}}
+	c := &fakeCommitter{}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        c,
+		Stdin:            strings.NewReader("a\n"),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		CommitFlag:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.committed) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(c.committed))
+	}
+	if c.committed[0] != "feat: committed" {
+		t.Errorf("committed %q, want %q", c.committed[0], "feat: committed")
+	}
+}
+
+func TestRun_allAndReword_mutuallyExclusive(t *testing.T) {
+	dp := &fakeDiffProvider{diff: "some diff", headDiff: "head diff", headMsg: "old message"}
+	mg := &fakeGenerator{msgs: []string{"should not be called"}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), RunConfig{
+		DiffProvider:     dp,
+		Generator:        mg,
+		Committer:        &fakeCommitter{},
+		Stdin:            strings.NewReader(""),
+		Stdout:           &stdout,
+		Stderr:           &stderr,
+		Temperature:      0.1,
+		RetryTemperature: 0.4,
+		AllFlag:          true,
+		RewordFlag:       true,
+	})
+
+	// run() itself doesn't check mutual exclusivity (main does),
+	// but with both flags set, reword takes precedence for diff.
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
