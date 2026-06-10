@@ -513,3 +513,37 @@ func TestNewClient_timeoutFromEnv(t *testing.T) {
 		t.Errorf("Timeout = %v, want 90s", client.Timeout)
 	}
 }
+
+func TestGenerateWithTemperature_retries429(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		resp := response{
+			Choices: []choice{{Message: message{Content: "ok"}}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		HTTPClient: srv.Client(),
+		URL:        srv.URL,
+		Model:      "test-model",
+	}
+
+	got, err := client.GenerateWithTemperature(context.Background(), "prompt", 0.5)
+	if err != nil {
+		t.Fatalf("GenerateWithTemperature() error: %v", err)
+	}
+	if got != "ok" {
+		t.Errorf("GenerateWithTemperature() = %q, want %q", got, "ok")
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type fakeDiffProvider struct {
@@ -840,3 +841,67 @@ func TestInteractiveCommit_emptyRetryThenRetry(t *testing.T) {
 		t.Errorf("third temp = %f, want 0.4", gen.temps[2])
 	}
 }
+
+func TestTruncateDiff_underLimit(t *testing.T) {
+	var buf strings.Builder
+	diff := "small diff"
+	got := truncateDiff(diff, &buf)
+	if got != diff {
+		t.Errorf("got %q, want %q", got, diff)
+	}
+	if buf.String() != "" {
+		t.Errorf("unexpected warning: %q", buf.String())
+	}
+}
+
+func TestTruncateDiff_overLimit(t *testing.T) {
+	var buf strings.Builder
+	diff := strings.Repeat("a", maxDiffSize+10)
+	got := truncateDiff(diff, &buf)
+	if len(got) != maxDiffSize+len("\n... (truncated)") {
+		t.Errorf("truncated length = %d, want %d", len(got), maxDiffSize+len("\n... (truncated)"))
+	}
+	if !strings.HasSuffix(got, "\n... (truncated)") {
+		t.Errorf("expected truncation suffix, got: %q", got)
+	}
+	if !strings.Contains(buf.String(), "warning: diff exceeds") {
+		t.Errorf("expected warning, got: %q", buf.String())
+	}
+}
+
+func TestTruncateDiff_utf8Boundary(t *testing.T) {
+	var buf strings.Builder
+	// 3-byte UTF-8 char "世" repeated to exceed maxDiffSize boundary
+	diff := strings.Repeat("世", maxDiffSize/3+10)
+	got := truncateDiff(diff, &buf)
+	if !utf8.ValidString(got) {
+		t.Errorf("truncated result contains invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "\n... (truncated)") {
+		t.Errorf("expected truncation suffix, got: %q", got)
+	}
+}
+
+func TestRun_largeDiffTruncated(t *testing.T) {
+	largeDiff := strings.Repeat("a", maxDiffSize+10)
+	gen := &fakeGenerator{msgs: []string{"feat: add feature"}}
+	var errOut strings.Builder
+	cfg := RunConfig{
+		DiffProvider: &fakeDiffProvider{stagedDiff: largeDiff},
+		Generator:    gen,
+		Stdin:        strings.NewReader(""),
+		Stdout:       io.Discard,
+		Stderr:       &errOut,
+		Temperature:  0.1,
+	}
+	if err := run(context.Background(), cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(errOut.String(), "warning: diff exceeds") {
+		t.Errorf("expected warning in stderr, got: %q", errOut.String())
+	}
+	if !strings.Contains(gen.prompts[0], "\n... (truncated)") {
+		t.Errorf("prompt should contain truncation suffix")
+	}
+}
+

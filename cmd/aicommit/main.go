@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aicommit/internal/git"
 	"aicommit/internal/llm"
@@ -137,6 +138,8 @@ func run(ctx context.Context, cfg RunConfig) error {
 		return errEmptyDiff
 	}
 
+	diff = truncateDiff(diff, cfg.Stderr)
+
 	promptText := prompt.Build(diff)
 	var currentMsg string
 	if cfg.RewordFlag {
@@ -180,6 +183,22 @@ func diffForMode(dp DiffProvider, all, reword bool) (string, error) {
 		return "", fmt.Errorf("getting staged diff: %w", err)
 	}
 	return diff, nil
+}
+
+const maxDiffSize = 50000
+
+// truncateDiff caps the diff at maxDiffSize runes. If truncation occurs, a
+// warning is printed to stderr and a trailing note is appended.
+func truncateDiff(diff string, stderr io.Writer) string {
+	if len(diff) <= maxDiffSize {
+		return diff
+	}
+	fmt.Fprintf(stderr, "warning: diff exceeds %d bytes, truncating to fit context window\n", maxDiffSize)
+	end := maxDiffSize
+	for end > 0 && !utf8.RuneStart(diff[end]) {
+		end--
+	}
+	return diff[:end] + "\n... (truncated)"
 }
 
 var errEmptyDiff = errors.New("empty diff")

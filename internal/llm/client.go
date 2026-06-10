@@ -292,5 +292,5 @@ func isRetryableError(err error) bool {
 }
 
 func isRetryableStatusCode(code int) bool {
-	return code == http.StatusBadGateway || code == http.StatusServiceUnavailable || code == http.StatusGatewayTimeout
+	return code == http.StatusBadGateway || code == http.StatusServiceUnavailable || code == http.StatusGatewayTimeout || code == http.StatusTooManyRequests
 }
