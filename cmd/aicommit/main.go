@@ -202,6 +202,8 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 	// isRetry tracks whether we've retried at least once. After the first retry,
 	// all subsequent generations use cfg.RetryTemperature for the session.
 	isRetry := false
+	emptyRetryCount := 0
+	maxEmptyRetries := 3
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -237,6 +239,9 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 			fmt.Fprint(cfg.Stdout, "[a]ccept, [e]dit, [r]etry, [c]ancel: ")
 
 			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return fmt.Errorf("reading stdin: %w", err)
+				}
 				fmt.Fprintln(cfg.Stdout)
 				return nil
 			}
@@ -245,7 +250,11 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 			switch choice {
 			case "a", "":
 				if msg == "" {
-					fmt.Fprintln(cfg.Stderr, "Error: generated commit message is empty, retrying.")
+					emptyRetryCount++
+					if emptyRetryCount > maxEmptyRetries {
+						return fmt.Errorf("LLM returned empty messages after %d attempts", maxEmptyRetries)
+					}
+					fmt.Fprintf(cfg.Stderr, "Error: generated commit message is empty, retrying (%d/%d).\n", emptyRetryCount, maxEmptyRetries)
 					previousSuggestions = append(previousSuggestions, msg)
 					if len(previousSuggestions) > 5 {
 						previousSuggestions = previousSuggestions[len(previousSuggestions)-5:]
@@ -270,6 +279,9 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 			case "e":
 				fmt.Fprint(cfg.Stdout, "Edit message: ")
 				if !scanner.Scan() {
+					if err := scanner.Err(); err != nil {
+						return fmt.Errorf("reading stdin: %w", err)
+					}
 					fmt.Fprintln(cfg.Stdout)
 					return nil
 				}
