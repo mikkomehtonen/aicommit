@@ -187,7 +187,9 @@ func diffForMode(dp DiffProvider, all, reword bool) (string, error) {
 
 const maxDiffSize = 50000
 
-// truncateDiff caps the diff at maxDiffSize runes. If truncation occurs, a
+const maxSuggestionHistory = 5
+
+// truncateDiff caps the diff at maxDiffSize bytes. If truncation occurs, a
 // warning is printed to stderr and a trailing note is appended.
 func truncateDiff(diff string, stderr io.Writer) string {
 	if len(diff) <= maxDiffSize {
@@ -275,8 +277,8 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 					}
 					fmt.Fprintf(cfg.Stderr, "Error: generated commit message is empty, retrying (%d/%d).\n", emptyRetryCount, maxEmptyRetries)
 					previousSuggestions = append(previousSuggestions, msg)
-					if len(previousSuggestions) > 5 {
-						previousSuggestions = previousSuggestions[len(previousSuggestions)-5:]
+					if len(previousSuggestions) > maxSuggestionHistory {
+						previousSuggestions = previousSuggestions[len(previousSuggestions)-maxSuggestionHistory:]
 					}
 					isRetry = true
 					break confirmLoop
@@ -311,8 +313,8 @@ func interactiveCommit(ctx context.Context, cfg RunConfig, diff string, all, rew
 				continue
 			case "r":
 				previousSuggestions = append(previousSuggestions, msg)
-				if len(previousSuggestions) > 5 {
-					previousSuggestions = previousSuggestions[len(previousSuggestions)-5:]
+				if len(previousSuggestions) > maxSuggestionHistory {
+					previousSuggestions = previousSuggestions[len(previousSuggestions)-maxSuggestionHistory:]
 				}
 				isRetry = true
 				break confirmLoop

@@ -1,7 +1,6 @@
 package git
 
 import (
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -117,18 +116,12 @@ func (g *Git) HeadMessage() (string, error) {
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
 
-// exitCoder matches the ExitCode method on both *exec.ExitError and test fakes.
+// exitCoder matches the ExitCode method on *exec.ExitError and test fakes.
 type exitCoder interface {
 	ExitCode() int
 }
 
 func hasExitCode(err error, code int) bool {
-	if ec, ok := err.(exitCoder); ok {
-		return ec.ExitCode() == code
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode() == code
-	}
-	return false
+	ec, ok := err.(exitCoder)
+	return ok && ec.ExitCode() == code
 }

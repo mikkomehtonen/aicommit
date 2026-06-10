@@ -181,7 +181,7 @@ func envRetryTemperature() (float64, string) {
 	return defaultRetryTemperature, ""
 }
 
-// Generate sends a prompt to the LLM API and returns the generated text.
+// Generate sends a prompt to the LLM API using the default temperature.
 func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 	return c.GenerateWithTemperature(ctx, prompt, c.Temperature)
 }
