@@ -7,17 +7,12 @@ import (
 	"strings"
 )
 
-// Executor runs an exec.Cmd and returns output.
+// Executor runs an exec.Cmd and returns combined output.
 type Executor interface {
-	Output(cmd *exec.Cmd) ([]byte, error)
 	CombinedOutput(cmd *exec.Cmd) ([]byte, error)
 }
 
 type defaultExecutor struct{}
-
-func (defaultExecutor) Output(cmd *exec.Cmd) ([]byte, error) {
-	return cmd.Output()
-}
 
 func (defaultExecutor) CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return cmd.CombinedOutput()
@@ -84,10 +79,6 @@ func (g *Git) AllDiff() (string, error) {
 	return string(out), nil
 }
 
-type exitCoder interface {
-	ExitCode() int
-}
-
 // HeadDiff returns the diff of the most recent commit via `git show --format="" HEAD`.
 // Returns an error if there are no commits yet.
 func (g *Git) HeadDiff() (string, error) {
@@ -124,6 +115,11 @@ func (g *Git) HeadMessage() (string, error) {
 		return "", fmt.Errorf("running git log: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
+// exitCoder matches the ExitCode method on both *exec.ExitError and test fakes.
+type exitCoder interface {
+	ExitCode() int
 }
 
 func hasExitCode(err error, code int) bool {

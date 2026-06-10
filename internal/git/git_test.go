@@ -14,10 +14,6 @@ type fakeExecutor struct {
 	fn func(cmd *exec.Cmd) ([]byte, error)
 }
 
-func (f *fakeExecutor) Output(cmd *exec.Cmd) ([]byte, error) {
-	return f.fn(cmd)
-}
-
 func (f *fakeExecutor) CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return f.fn(cmd)
 }

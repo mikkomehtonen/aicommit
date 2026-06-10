@@ -904,4 +904,3 @@ func TestRun_largeDiffTruncated(t *testing.T) {
 		t.Errorf("prompt should contain truncation suffix")
 	}
 }
-

@@ -32,7 +32,7 @@ type request struct {
 	Model       string    `json:"model"`
 	Messages    []message `json:"messages"`
 	Stream      bool      `json:"stream"`
-	Temperature *float64  `json:"temperature,omitempty"`
+	Temperature float64   `json:"temperature"`
 }
 
 type message struct {
@@ -200,7 +200,7 @@ func (c *Client) GenerateWithTemperature(ctx context.Context, prompt string, tem
 		Model:       c.Model,
 		Messages:    []message{{Role: "user", Content: prompt}},
 		Stream:      false,
-		Temperature: &temperature,
+		Temperature: temperature,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshaling request: %w", err)

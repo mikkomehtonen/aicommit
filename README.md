@@ -79,6 +79,18 @@ feat: add user authentication
 - **`r`** — regenerate a new message from the same diff
 - **`c`** — cancel without committing
 
+### Reword (`--reword`)
+
+Add `--reword` (or `-r`) to reword the most recent commit's message based on its diff:
+
+```bash
+aicommit --reword
+```
+
+This reads the diff of the current HEAD commit and generates a new Conventional Commit message. When combined with `--commit`, the commit is amended in place with the new message.
+
+`--reword` and `--all` are mutually exclusive.
+
 ## Configuration
 
 The app connects to an OpenAI-compatible API at `http://localhost:1234` using the model `qwen/qwen3.6-27b`. Both can be overridden with environment variables:

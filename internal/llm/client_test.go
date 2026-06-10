@@ -176,9 +176,7 @@ func TestGenerateWithTemperature_sendsTemperature(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req request
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.Temperature != nil {
-			receivedTemp = *req.Temperature
-		}
+		receivedTemp = req.Temperature
 		resp := response{
 			Choices: []choice{{Message: message{Content: "ok"}}},
 		}
@@ -207,9 +205,7 @@ func TestGenerateWithTemperature_defaultTemperature(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req request
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.Temperature != nil {
-			receivedTemp = *req.Temperature
-		}
+		receivedTemp = req.Temperature
 		resp := response{
 			Choices: []choice{{Message: message{Content: "ok"}}},
 		}
